@@ -1,0 +1,33 @@
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+build/
+.fvm/
+.idea/
+.vscode/
+*.iml
+pubspec.lock
+
+# Android
+android/.gradle/
+android/local.properties
+android/key.properties
+*.jks
+
+# iOS
+ios/Pods/
+ios/Runner.xcworkspace/xcuserdata/
+ios/Runner.xcodeproj/xcuserdata/
+ios/.symlinks/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+coverage/
+.env
