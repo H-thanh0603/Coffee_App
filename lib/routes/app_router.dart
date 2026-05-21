@@ -28,10 +28,17 @@ class AppRouter {
       refreshListenable: auth,
       redirect: (ctx, state) {
         final loggedIn = auth.isLoggedIn;
-        final goingAuth = state.matchedLocation == '/login' ||
-            state.matchedLocation == '/';
-        if (!loggedIn && !goingAuth) return '/login';
-        if (loggedIn && goingAuth) return RoleRouter.homeFor(auth.role!);
+        final loc = state.matchedLocation;
+        // Splash root: bao giờ cũng nhảy đi đâu đó
+        if (loc == '/') {
+          return loggedIn ? RoleRouter.homeFor(auth.role!) : '/login';
+        }
+        // Chưa login mà vào màn protected -> ép về login
+        if (!loggedIn && loc != '/login') return '/login';
+        // Đã login rồi mà còn vào /login -> đẩy về home theo role
+        if (loggedIn && loc == '/login') {
+          return RoleRouter.homeFor(auth.role!);
+        }
         return null;
       },
       routes: [
