@@ -30,7 +30,7 @@ import '../seed/seed_vouchers.dart';
 /// Tất cả các operation đều là realtime nhờ ChangeNotifier.
 class DataStore extends ChangeNotifier {
   final List<AppUser> users = [];
-  final List<Category> categories = [];
+  final List<ProductCategory> categories = [];
   final List<Topping> toppings = [];
   final List<Product> products = [];
   final List<CafeTable> tables = [];
@@ -83,8 +83,12 @@ class DataStore extends ChangeNotifier {
   }
 
   // ===== CATEGORY =====
-  Category? findCategory(String id) =>
-      categories.cast<Category?>().firstWhere((c) => c?.id == id, orElse: () => null);
+  ProductCategory? findCategory(String id) {
+    for (final c in categories) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
 
   // ===== PRODUCT =====
   void addProduct(Product p) {
@@ -104,8 +108,12 @@ class DataStore extends ChangeNotifier {
   }
 
   // ===== TOPPING =====
-  Topping? findTopping(String id) =>
-      toppings.cast<Topping?>().firstWhere((t) => t?.id == id, orElse: () => null);
+  Topping? findTopping(String id) {
+    for (final t in toppings) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
 
   void addTopping(Topping t) {
     toppings.add(t);
@@ -124,8 +132,12 @@ class DataStore extends ChangeNotifier {
   }
 
   // ===== TABLE =====
-  CafeTable? findTable(String id) =>
-      tables.cast<CafeTable?>().firstWhere((t) => t?.id == id, orElse: () => null);
+  CafeTable? findTable(String id) {
+    for (final t in tables) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
 
   void setTableStatus(String id, TableStatus status, {String? orderId}) {
     final t = findTable(id);
@@ -137,8 +149,12 @@ class DataStore extends ChangeNotifier {
   }
 
   // ===== CUSTOMER =====
-  Customer? findCustomer(String id) =>
-      customers.cast<Customer?>().firstWhere((c) => c?.id == id, orElse: () => null);
+  Customer? findCustomer(String id) {
+    for (final c in customers) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
 
   Customer? findCustomerByPhone(String phone) {
     try {
@@ -154,8 +170,12 @@ class DataStore extends ChangeNotifier {
   }
 
   // ===== INGREDIENT =====
-  Ingredient? findIngredient(String id) =>
-      ingredients.cast<Ingredient?>().firstWhere((i) => i?.id == id, orElse: () => null);
+  Ingredient? findIngredient(String id) {
+    for (final i in ingredients) {
+      if (i.id == id) return i;
+    }
+    return null;
+  }
 
   void addIngredient(Ingredient i) {
     ingredients.add(i);

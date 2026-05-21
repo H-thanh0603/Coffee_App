@@ -50,7 +50,7 @@ class AdminDashboard extends StatelessWidget {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async => store.notifyListeners(),
+        onRefresh: () async {},
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [

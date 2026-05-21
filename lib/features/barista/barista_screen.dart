@@ -27,15 +27,7 @@ class _BaristaScreenState extends State<BaristaScreen> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     final store = context.watch<DataStore>();
-    final all = store.orders.where((o) =>
-        o.paymentStatus == PaymentStatus.paid &&
-        o.orderStatus != OrderStatus.cancelled &&
-        o.orderStatus != OrderStatus.served &&
-        o.orderType != OrderType.takeaway).toList()
-      ..addAll(store.orders.where((o) =>
-        o.paymentStatus != PaymentStatus.paid &&
-        o.orderStatus != OrderStatus.cancelled));
-    final pending = store.orders.where((o) =>
+final pending = store.orders.where((o) =>
         (o.orderStatus == OrderStatus.pending || o.orderStatus == OrderStatus.confirmed) &&
         o.orderStatus != OrderStatus.cancelled).toList();
     final preparing = store.orders.where((o) => o.orderStatus == OrderStatus.preparing).toList();

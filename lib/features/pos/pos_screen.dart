@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/constants/enums.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_drawer.dart';
 import '../../core/widgets/empty_state.dart';
-import '../../data/models/category.dart';
 import '../../data/models/product.dart';
 import '../../data/services/data_store.dart';
-import '../auth/auth_provider.dart';
 import '../cart/cart_provider.dart';
 import 'cart_panel.dart';
 import 'product_options_sheet.dart';
