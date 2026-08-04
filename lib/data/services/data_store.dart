@@ -284,7 +284,8 @@ class DataStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  void stockOut(String ingId, double qty, String createdBy, {String note = ''}) {
+  void stockOut(String ingId, double qty, String createdBy,
+      {String note = ''}) {
     final ing = findIngredient(ingId);
     if (ing == null) return;
     ing.currentStock = (ing.currentStock - qty).clamp(0, double.infinity);
@@ -341,7 +342,8 @@ class DataStore extends ChangeNotifier {
   // ===== VOUCHER =====
   Voucher? findVoucherByCode(String code) {
     try {
-      return vouchers.firstWhere((v) => v.code.toUpperCase() == code.toUpperCase());
+      return vouchers
+          .firstWhere((v) => v.code.toUpperCase() == code.toUpperCase());
     } catch (_) {
       return null;
     }
@@ -371,6 +373,8 @@ class DataStore extends ChangeNotifier {
     String? tableId,
     String? customerId,
     Voucher? voucher,
+    int pointsUsed = 0,
+    double pointsDiscount = 0,
     String note = '',
   }) {
     orderSeq += 1;
@@ -379,7 +383,9 @@ class DataStore extends ChangeNotifier {
     final cust = customerId != null ? findCustomer(customerId) : null;
     final subtotal = items.fold<double>(0, (s, e) => s + e.totalPrice);
     final discount = voucher?.calcDiscount(subtotal) ?? 0;
-    final total = subtotal - discount;
+    final total = (subtotal - discount - pointsDiscount)
+        .clamp(0.0, double.infinity)
+        .toDouble();
 
     final order = AppOrder(
       id: const Uuid().v4(),
@@ -395,6 +401,8 @@ class DataStore extends ChangeNotifier {
       subtotal: subtotal,
       discount: discount,
       voucherCode: voucher?.code,
+      pointsUsed: pointsUsed,
+      pointsDiscount: pointsDiscount,
       total: total,
       note: note,
     );
@@ -410,7 +418,10 @@ class DataStore extends ChangeNotifier {
 
     _addNotification(
       title: 'Đơn mới #' + code,
-      message: (tbl?.tableName ?? 'Mang đi') + ' • ' + items.length.toString() + ' món',
+      message: (tbl?.tableName ?? 'Mang đi') +
+          ' • ' +
+          items.length.toString() +
+          ' món',
       type: 'order_new',
       role: UserRole.barista,
     );
@@ -455,12 +466,106 @@ class DataStore extends ChangeNotifier {
     if (updated.customerId != null) {
       final c = findCustomer(updated.customerId!);
       if (c != null) {
-        final pts = (updated.total / 10000).floor();
-        c.addPoints(pts);
+        final earned = (updated.total / 10000).floor();
+        // cộng điểm mua + trừ điểm đã dùng để giảm giá
+        c.addPoints(earned - updated.pointsUsed);
         c.addOrder(updated.total);
       }
     }
     notifyListeners();
+  }
+
+  /// Chuyển order (đơn đang phục vụ) sang bàn khác.
+  void moveOrderToTable(String orderId, String newTableId) {
+    final i = orders.indexWhere((o) => o.id == orderId);
+    final newT = findTable(newTableId);
+    if (i < 0 || newT == null) return;
+    final o = orders[i];
+    final oldT = o.tableId != null ? findTable(o.tableId!) : null;
+    if (oldT != null) {
+      oldT.status = TableStatus.empty;
+      oldT.currentOrderId = null;
+    }
+    orders[i] = o.copyWith(tableId: newT.id, tableName: newT.tableName);
+    newT.status = TableStatus.serving;
+    newT.currentOrderId = orderId;
+    _addNotification(
+      title: 'Bàn ' + (o.tableName ?? '') + ' → ' + newT.tableName,
+      message: 'Đơn ' + o.orderCode + ' đã chuyển bàn',
+      type: 'table_move',
+      role: UserRole.waiter,
+    );
+    notifyListeners();
+  }
+
+  /// Gộp 2 bàn đang phục vụ: gộp toàn bộ món vào bàn đích, bàn nguồn về trống.
+  void mergeTables(String fromTableId, String toTableId) {
+    if (fromTableId == toTableId) return;
+    final from = findTable(fromTableId);
+    final to = findTable(toTableId);
+    if (from == null || to == null) return;
+    AppOrder? findOrder(String? orderId) {
+      if (orderId == null) return null;
+      try {
+        return orders.firstWhere((o) => o.id == orderId);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final fromOrder = findOrder(from.currentOrderId);
+    final toOrder = findOrder(to.currentOrderId);
+    if (fromOrder == null || toOrder == null) return;
+
+    final mergedItems = [...toOrder.items, ...fromOrder.items];
+    final subtotal = toOrder.subtotal + fromOrder.subtotal;
+    final discount = toOrder.discount + fromOrder.discount;
+    final total = (subtotal - discount).clamp(0.0, double.infinity).toDouble();
+
+    orderSeq += 1;
+    final merged = AppOrder(
+      id: const Uuid().v4(),
+      orderCode: Fmt.orderCode(orderSeq),
+      tableId: to.id,
+      tableName: to.tableName,
+      customerId: toOrder.customerId,
+      customerName: toOrder.customerName,
+      cashierId: toOrder.cashierId,
+      cashierName: toOrder.cashierName,
+      orderType: toOrder.orderType,
+      items: mergedItems,
+      subtotal: subtotal,
+      discount: discount,
+      voucherCode: toOrder.voucherCode,
+      total: total,
+      note: (toOrder.note.isNotEmpty ? toOrder.note + ' ' : '') +
+          fromOrder.note.trim(),
+    );
+    orders.add(merged);
+
+    // Đánh dấu 2 đơn gốc đã hủy (gộp bàn), bàn nguồn về trống
+    orders[iOf(fromOrder.id)] =
+        fromOrder.copyWith(orderStatus: OrderStatus.cancelled);
+    orders[iOf(toOrder.id)] =
+        toOrder.copyWith(orderStatus: OrderStatus.cancelled);
+    from.status = TableStatus.empty;
+    from.currentOrderId = null;
+    to.status = TableStatus.serving;
+    to.currentOrderId = merged.id;
+    _addNotification(
+      title: 'Gộp bàn',
+      message: to.tableName + ' tổng ' + merged.itemCount.toString() + ' món',
+      type: 'table_merge',
+      role: UserRole.waiter,
+    );
+    notifyListeners();
+  }
+
+  int iOf(String orderId) {
+    for (var i = 0; i < orders.length; i++) {
+      if (orders[i].id == orderId) return i;
+    }
+    return -1;
   }
 
   void cancelOrder(String orderId, {String? reason}) {
@@ -504,7 +609,9 @@ class DataStore extends ChangeNotifier {
   }
 
   List<AppNotification> notificationsForRole(UserRole role) {
-    return notifications.where((n) => n.targetRole == null || n.targetRole == role).toList();
+    return notifications
+        .where((n) => n.targetRole == null || n.targetRole == role)
+        .toList();
   }
 
   void _checkLowStockAlerts() {
@@ -515,7 +622,11 @@ class DataStore extends ChangeNotifier {
         if (!exists) {
           _addNotification(
             title: 'Nguyên liệu sắp hết',
-            message: ing.name + ' chỉ còn ' + ing.currentStock.toStringAsFixed(0) + ' ' + ing.unit,
+            message: ing.name +
+                ' chỉ còn ' +
+                ing.currentStock.toStringAsFixed(0) +
+                ' ' +
+                ing.unit,
             type: 'low_stock',
             role: UserRole.admin,
           );
@@ -550,7 +661,8 @@ class DataStore extends ChangeNotifier {
     final result = <MapEntry<String, double>>[];
     final now = DateTime.now();
     for (var i = 6; i >= 0; i--) {
-      final d = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
+      final d =
+          DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
       result.add(MapEntry(Fmt.shortDate(d), revenueOnDate(d)));
     }
     return result;
@@ -569,7 +681,8 @@ class DataStore extends ChangeNotifier {
       ..sort((a, b) => b.value.compareTo(a.value));
     final result = <MapEntry<Product, int>>[];
     for (final e in sorted.take(limit)) {
-      final p = products.cast<Product?>()
+      final p = products
+          .cast<Product?>()
           .firstWhere((x) => x?.id == e.key, orElse: () => null);
       if (p != null) result.add(MapEntry(p, e.value));
     }
@@ -591,7 +704,8 @@ class DataStore extends ChangeNotifier {
     final result = <MapEntry<Product, int>>[];
     counts.forEach((pid, count) {
       if (count < threshold) {
-        final p = products.cast<Product?>()
+        final p = products
+            .cast<Product?>()
             .firstWhere((x) => x?.id == pid, orElse: () => null);
         if (p != null && !p.hidden) result.add(MapEntry(p, count));
       }
@@ -615,12 +729,12 @@ class DataStore extends ChangeNotifier {
       final daysLeft = dailyRate > 0 ? ing.currentStock / dailyRate : 999;
       if (ing.isLow || daysLeft <= 5) {
         // gợi ý nhập đủ dùng 14 ngày
-        final suggested = (dailyRate * 14 - ing.currentStock).clamp(0, double.infinity);
+        final suggested =
+            (dailyRate * 14 - ing.currentStock).clamp(0, double.infinity);
         result.add(MapEntry(ing, suggested.toDouble()));
       }
     }
-    result.sort((a, b) =>
-        a.key.currentStock.compareTo(b.key.currentStock));
+    result.sort((a, b) => a.key.currentStock.compareTo(b.key.currentStock));
     return result;
   }
 
@@ -629,9 +743,18 @@ class DataStore extends ChangeNotifier {
     final cashier = users.firstWhere((u) => u.role == UserRole.cashier);
     final now = DateTime.now();
     final productPicks = [
-      'p-tra-dao', 'p-trasua-truyenthong', 'p-caphe-sua', 'p-bac-xiu',
-      'p-cappuccino', 'p-trasua-matcha', 'p-tra-vai', 'p-tra-chanh',
-      'p-trasua-chocolate', 'p-soda-vietquat', 'p-banh-tiramisu', 'p-matcha-dax',
+      'p-tra-dao',
+      'p-trasua-truyenthong',
+      'p-caphe-sua',
+      'p-bac-xiu',
+      'p-cappuccino',
+      'p-trasua-matcha',
+      'p-tra-vai',
+      'p-tra-chanh',
+      'p-trasua-chocolate',
+      'p-soda-vietquat',
+      'p-banh-tiramisu',
+      'p-matcha-dax',
     ];
 
     int seq = 0;

@@ -7,7 +7,9 @@ import '../../core/theme/app_colors.dart';
 import '../../core/widgets/app_drawer.dart';
 import '../../core/widgets/status_badge.dart';
 import '../../data/models/cafe_table.dart';
+import '../../data/models/order.dart';
 import '../../data/services/data_store.dart';
+import '../cart/cart_provider.dart';
 
 class TablesScreen extends StatelessWidget {
   const TablesScreen({super.key});
@@ -54,19 +56,28 @@ class _TableCard extends StatelessWidget {
 
   Color get _color {
     switch (table.status) {
-      case TableStatus.empty: return AppColors.tableEmpty;
-      case TableStatus.serving: return AppColors.tableServing;
-      case TableStatus.waiting: return AppColors.tableWaiting;
-      case TableStatus.reserved: return AppColors.tableReserved;
-      case TableStatus.needsClean: return AppColors.tableNeedsClean;
+      case TableStatus.empty:
+        return AppColors.tableEmpty;
+      case TableStatus.serving:
+        return AppColors.tableServing;
+      case TableStatus.waiting:
+        return AppColors.tableWaiting;
+      case TableStatus.reserved:
+        return AppColors.tableReserved;
+      case TableStatus.needsClean:
+        return AppColors.tableNeedsClean;
     }
   }
 
+  AppOrder? get _order => table.currentOrderId == null
+      ? null
+      : store.orders
+          .cast<AppOrder?>()
+          .firstWhere((o) => o?.id == table.currentOrderId, orElse: () => null);
+
   @override
   Widget build(BuildContext context) {
-    final order = table.currentOrderId == null
-        ? null
-        : store.orders.cast<dynamic>().firstWhere((o) => o.id == table.currentOrderId, orElse: () => null);
+    final order = _order;
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () => _showActions(context),
@@ -81,26 +92,33 @@ class _TableCard extends StatelessWidget {
           Row(children: [
             Icon(Icons.chair, color: _color),
             const Spacer(),
-            Text(table.tableName, style: TextStyle(
-                fontWeight: FontWeight.w800, fontSize: 18, color: _color)),
+            Text(table.tableName,
+                style: TextStyle(
+                    fontWeight: FontWeight.w800, fontSize: 18, color: _color)),
           ]),
           const Spacer(),
           Text(table.status.label,
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _color)),
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600, color: _color)),
           const SizedBox(height: 2),
           Text(table.capacity.toString() + ' chỗ',
               style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-          if (order != null) Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(order.orderCode,
-                style: const TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w700)),
-          ),
+          if (order != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(order.orderCode,
+                  style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w700)),
+            ),
         ]),
       ),
     );
   }
 
   void _showActions(BuildContext ctx) {
+    final order = _order;
     showModalBottomSheet(
       context: ctx,
       builder: (_) => SafeArea(
@@ -108,21 +126,111 @@ class _TableCard extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.point_of_sale, color: AppColors.primary),
             title: Text('Tạo đơn cho ' + table.tableName),
+            subtitle: table.status != TableStatus.empty
+                ? const Text('Sẽ chọn sẵn bàn trong giỏ',
+                    style: TextStyle(fontSize: 11))
+                : null,
             onTap: () {
+              final cart = ctx.read<CartProvider>();
+              cart.setTable(table.id, table.tableName);
               Navigator.pop(ctx);
               ctx.go('/cashier');
             },
           ),
-          ...TableStatus.values.where((s) => s != table.status).map((s) => ListTile(
-                leading: const Icon(Icons.swap_horiz),
-                title: Text('Chuyển sang: ' + s.label),
-                onTap: () {
-                  store.setTableStatus(table.id, s);
-                  Navigator.pop(ctx);
-                },
-              )),
+          if (order != null) ...[
+            ListTile(
+              leading: const Icon(Icons.swap_horiz, color: AppColors.primary),
+              title: const Text('Chuyển bàn'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickTableToMove(ctx, order);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.merge, color: AppColors.accent),
+              title: const Text('Gộp bàn vào...'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickTableToMerge(ctx);
+              },
+            ),
+          ],
+          ...TableStatus.values
+              .where((s) => s != table.status)
+              .map((s) => ListTile(
+                    leading: const Icon(Icons.swap_horiz),
+                    title: Text('Chuyển trạng thái: ' + s.label),
+                    onTap: () {
+                      store.setTableStatus(table.id, s);
+                      Navigator.pop(ctx);
+                    },
+                  )),
         ]),
       ),
+    );
+  }
+
+  /// Chọn bàn trống để chuyển order sang.
+  void _pickTableToMove(BuildContext ctx, AppOrder order) {
+    final available = store.tables
+        .where((t) => t.id != table.id && t.status == TableStatus.empty)
+        .toList();
+    showModalBottomSheet(
+      context: ctx,
+      builder: (_) => available.isEmpty
+          ? const SizedBox(
+              height: 160, child: Center(child: Text('Không có bàn trống')))
+          : SafeArea(
+              child: ListView(
+                shrinkWrap: true,
+                children: available
+                    .map((t) => ListTile(
+                          leading:
+                              const Icon(Icons.chair, color: AppColors.primary),
+                          title: Text('Chuyển sang ' + t.tableName),
+                          subtitle: Text(t.capacity.toString() +
+                              ' chỗ • ' +
+                              t.status.label),
+                          onTap: () {
+                            store.moveOrderToTable(order.id, t.id);
+                            Navigator.pop(ctx);
+                          },
+                        ))
+                    .toList(),
+              ),
+            ),
+    );
+  }
+
+  /// Chọn bàn đang phục vụ để gộp (bàn này sẽ gộp vào bàn kia).
+  void _pickTableToMerge(BuildContext ctx) {
+    final serving = store.tables
+        .where((t) => t.id != table.id && t.status == TableStatus.serving)
+        .toList();
+    showModalBottomSheet(
+      context: ctx,
+      builder: (_) => serving.isEmpty
+          ? const SizedBox(
+              height: 160,
+              child: Center(child: Text('Không có bàn đang phục vụ khác')))
+          : SafeArea(
+              child: ListView(
+                shrinkWrap: true,
+                children: serving
+                    .map((t) => ListTile(
+                          leading: Icon(Icons.merge, color: AppColors.accent),
+                          title: Text(
+                              'Gộp ' + table.tableName + ' vào ' + t.tableName),
+                          subtitle:
+                              Text('Toàn bộ món sẽ dồn về ' + t.tableName),
+                          onTap: () {
+                            store.mergeTables(table.id, t.id);
+                            Navigator.pop(ctx);
+                          },
+                        ))
+                    .toList(),
+              ),
+            ),
     );
   }
 }

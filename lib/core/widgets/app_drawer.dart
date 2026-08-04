@@ -43,6 +43,7 @@ class AppDrawer extends StatelessWidget {
       items.add(_NavItem(Icons.coffee_maker, 'Pha chế', '/barista'));
     } else if (u.role == UserRole.waiter) {
       items.addAll([
+        _NavItem(Icons.point_of_sale, 'Bán hàng', '/cashier'),
         _NavItem(Icons.table_restaurant, 'Bàn', '/waiter'),
         _NavItem(Icons.receipt_long, 'Đơn hàng', '/orders'),
       ]);
@@ -66,11 +67,20 @@ class AppDrawer extends StatelessWidget {
                   radius: 28,
                   backgroundColor: Colors.white,
                   child: Text(u.fullName.characters.first,
-                      style: const TextStyle(color: AppColors.primary, fontSize: 22, fontWeight: FontWeight.bold)),
+                      style: const TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold)),
                 ),
                 const SizedBox(height: 10),
-                Text(u.fullName, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
-                Text(u.role.label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                Text(u.fullName,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600)),
+                Text(u.role.label,
+                    style:
+                        const TextStyle(color: Colors.white70, fontSize: 12)),
               ],
             ),
           ),
@@ -91,7 +101,8 @@ class AppDrawer extends StatelessWidget {
           const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.logout, color: AppColors.danger),
-            title: const Text('Đăng xuất', style: TextStyle(color: AppColors.danger)),
+            title: const Text('Đăng xuất',
+                style: TextStyle(color: AppColors.danger)),
             onTap: () {
               auth.logout();
               Navigator.pop(context);

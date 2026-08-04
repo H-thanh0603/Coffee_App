@@ -6,8 +6,15 @@ import 'package:smartcafe/routes/route_guard.dart';
 void main() {
   group('RouteGuard', () {
     test('cashier không vào được màn admin-only', () {
-      for (final loc in ['/admin', '/products', '/inventory', '/recipes',
-          '/vouchers', '/reports', '/employees']) {
+      for (final loc in [
+        '/admin',
+        '/products',
+        '/inventory',
+        '/recipes',
+        '/vouchers',
+        '/reports',
+        '/employees'
+      ]) {
         expect(RouteGuard.allowed(loc, UserRole.cashier), isFalse,
             reason: '$loc phải chặn cashier');
       }
@@ -30,9 +37,11 @@ void main() {
       expect(RouteGuard.allowed('/orders', UserRole.barista), isFalse);
     });
 
-    test('waiter chỉ bàn + đơn + profile', () {
+    test('waiter được bàn, đơn, POS, profile', () {
       expect(RouteGuard.allowed('/waiter', UserRole.waiter), isTrue);
       expect(RouteGuard.allowed('/orders', UserRole.waiter), isTrue);
+      expect(RouteGuard.allowed('/cashier', UserRole.waiter), isTrue);
+      expect(RouteGuard.allowed('/profile', UserRole.waiter), isTrue);
       expect(RouteGuard.allowed('/admin', UserRole.waiter), isFalse);
       expect(RouteGuard.allowed('/reports', UserRole.waiter), isFalse);
     });
@@ -45,10 +54,23 @@ void main() {
     });
 
     test('admin vào được mọi route hệ thống', () {
-      for (final loc in ['/admin', '/cashier', '/barista', '/waiter',
-          '/customer', '/orders', '/products', '/inventory', '/recipes',
-          '/customers', '/vouchers', '/reports', '/employees', '/tables',
-          '/profile']) {
+      for (final loc in [
+        '/admin',
+        '/cashier',
+        '/barista',
+        '/waiter',
+        '/customer',
+        '/orders',
+        '/products',
+        '/inventory',
+        '/recipes',
+        '/customers',
+        '/vouchers',
+        '/reports',
+        '/employees',
+        '/tables',
+        '/profile'
+      ]) {
         expect(RouteGuard.allowed(loc, UserRole.admin), isTrue,
             reason: '$loc phải mở cho admin');
       }

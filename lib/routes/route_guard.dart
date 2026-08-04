@@ -7,7 +7,7 @@ import '../core/constants/enums.dart';
 class RouteGuard {
   static const Map<String, List<UserRole>> _allowed = {
     '/admin': [UserRole.admin],
-    '/cashier': [UserRole.admin, UserRole.cashier],
+    '/cashier': [UserRole.admin, UserRole.cashier, UserRole.waiter],
     '/barista': [UserRole.admin, UserRole.barista],
     '/waiter': [UserRole.admin, UserRole.waiter],
     '/customer': [UserRole.admin, UserRole.customer],

@@ -175,8 +175,7 @@ Map<String, dynamic> productToJson(Product p) => {
       'emoji': p.emoji,
       'categoryId': p.categoryId,
       'basePrice': p.basePrice,
-      'priceBySize':
-          p.priceBySize.map((k, v) => MapEntry(k.name, v)),
+      'priceBySize': p.priceBySize.map((k, v) => MapEntry(k.name, v)),
       'availableToppingIds': p.availableToppingIds,
       'inStock': p.inStock,
       'hidden': p.hidden,
@@ -225,7 +224,8 @@ CafeTable tableFromJson(Map<String, dynamic> m) => CafeTable(
       id: m['id'] as String,
       tableName: m['tableName'] as String,
       capacity: _int(m['capacity']),
-      status: _enum(TableStatus.values, m['status'] as String?, TableStatus.empty),
+      status:
+          _enum(TableStatus.values, m['status'] as String?, TableStatus.empty),
       currentOrderId: m['currentOrderId'] as String?,
       qrCodeValue: m['qrCodeValue'] as String?,
     );
@@ -250,7 +250,8 @@ Customer customerFromJson(Map<String, dynamic> m) => Customer(
       phone: m['phone'] as String,
       email: m['email'] as String? ?? '',
       points: _int(m['points']),
-      rank: _enum(CustomerRank.values, m['rank'] as String?, CustomerRank.bronze),
+      rank:
+          _enum(CustomerRank.values, m['rank'] as String?, CustomerRank.bronze),
       totalSpent: _num(m['totalSpent']),
       totalOrders: _int(m['totalOrders']),
       favoriteProducts:
@@ -331,8 +332,8 @@ Voucher voucherFromJson(Map<String, dynamic> m) => Voucher(
       id: m['id'] as String,
       code: m['code'] as String,
       name: m['name'] as String? ?? '',
-      discountType:
-          _enum(DiscountType.values, m['discountType'] as String?, DiscountType.amount),
+      discountType: _enum(DiscountType.values, m['discountType'] as String?,
+          DiscountType.amount),
       discountValue: _num(m['discountValue']),
       minOrderValue: _num(m['minOrderValue']),
       maxDiscount: _num(m['maxDiscount']),
@@ -393,6 +394,8 @@ Map<String, dynamic> orderToJson(AppOrder o) => {
       'subtotal': o.subtotal,
       'discount': o.discount,
       'voucherCode': o.voucherCode,
+      'pointsUsed': o.pointsUsed,
+      'pointsDiscount': o.pointsDiscount,
       'total': o.total,
       'paymentMethod': o.paymentMethod?.name,
       'paymentStatus': o.paymentStatus.name,
@@ -412,19 +415,23 @@ AppOrder orderFromJson(Map<String, dynamic> m) => AppOrder(
       customerName: m['customerName'] as String?,
       cashierId: m['cashierId'] as String,
       cashierName: m['cashierName'] as String,
-      orderType: _enum(OrderType.values, m['orderType'] as String?, OrderType.dineIn),
+      orderType:
+          _enum(OrderType.values, m['orderType'] as String?, OrderType.dineIn),
       items: _listOf(m['items']).map(orderItemFromJson).toList(),
       subtotal: _num(m['subtotal']),
       discount: _num(m['discount']),
       voucherCode: m['voucherCode'] as String?,
+      pointsUsed: _int(m['pointsUsed']),
+      pointsDiscount: _num(m['pointsDiscount']),
       total: _num(m['total']),
       paymentMethod: m['paymentMethod'] == null
           ? null
-          : _enum(PaymentMethod.values, m['paymentMethod'] as String, PaymentMethod.cash),
-      paymentStatus:
-          _enum(PaymentStatus.values, m['paymentStatus'] as String?, PaymentStatus.unpaid),
-      orderStatus:
-          _enum(OrderStatus.values, m['orderStatus'] as String?, OrderStatus.pending),
+          : _enum(PaymentMethod.values, m['paymentMethod'] as String,
+              PaymentMethod.cash),
+      paymentStatus: _enum(PaymentStatus.values, m['paymentStatus'] as String?,
+          PaymentStatus.unpaid),
+      orderStatus: _enum(
+          OrderStatus.values, m['orderStatus'] as String?, OrderStatus.pending),
       note: m['note'] as String? ?? '',
       createdAt: _prs(m['createdAt'] as String?),
       updatedAt: _prs(m['updatedAt'] as String?),
@@ -448,7 +455,8 @@ StockTransaction stockTxFromJson(Map<String, dynamic> m) => StockTransaction(
       id: m['id'] as String,
       ingredientId: m['ingredientId'] as String,
       ingredientName: m['ingredientName'] as String? ?? '',
-      type: _enum(StockTxType.values, m['type'] as String?, StockTxType.inbound),
+      type:
+          _enum(StockTxType.values, m['type'] as String?, StockTxType.inbound),
       quantity: _num(m['quantity']),
       unit: m['unit'] as String? ?? '',
       note: m['note'] as String? ?? '',
@@ -474,7 +482,8 @@ AppNotification notificationFromJson(Map<String, dynamic> m) => AppNotification(
       type: m['type'] as String? ?? 'info',
       targetRole: m['targetRole'] == null
           ? null
-          : _enum(UserRole.values, m['targetRole'] as String, UserRole.customer),
+          : _enum(
+              UserRole.values, m['targetRole'] as String, UserRole.customer),
       isRead: _bool(m['isRead']),
       createdAt: _prs(m['createdAt'] as String?),
     );
