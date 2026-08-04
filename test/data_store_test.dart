@@ -358,7 +358,7 @@ void main() {
     test('dùng điểm giảm giá: total trừ điểm + payOrder trừ điểm khách', () {
       final cust = store.customers.first;
       cust.addPoints(300); // đủ 300 điểm
-      final ptsUsed = 200;
+      const ptsUsed = 200;
       final discount = ((ptsUsed ~/ 100) * 10000).toDouble(); // 20.000đ
 
       final cashier = _cashier(store)!;

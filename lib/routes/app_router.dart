@@ -9,6 +9,7 @@ import '../features/customer_app/customer_home.dart';
 import '../features/dashboard/admin_dashboard.dart';
 import '../features/employees/employees_screen.dart';
 import '../features/inventory/inventory_screen.dart';
+import '../features/customers/customer_detail_screen.dart';
 import '../features/customers/customers_screen.dart';
 import '../features/orders/order_detail_screen.dart';
 import '../features/orders/orders_history_screen.dart';
@@ -57,23 +58,35 @@ class AppRouter {
         GoRoute(path: '/barista', builder: (_, __) => const BaristaScreen()),
         GoRoute(path: '/waiter', builder: (_, __) => const TablesScreen()),
         GoRoute(path: '/customer', builder: (_, __) => const CustomerHome()),
-        GoRoute(path: '/orders', builder: (_, __) => const OrdersHistoryScreen()),
-        GoRoute(path: '/orders/:id', builder: (ctx, st) =>
-            OrderDetailScreen(orderId: st.pathParameters['id']!)),
+        GoRoute(
+            path: '/orders', builder: (_, __) => const OrdersHistoryScreen()),
+        GoRoute(
+            path: '/orders/:id',
+            builder: (ctx, st) =>
+                OrderDetailScreen(orderId: st.pathParameters['id']!)),
         GoRoute(path: '/products', builder: (_, __) => const ProductsScreen()),
-        GoRoute(path: '/categories', builder: (_, __) => const CategoriesScreen()),
+        GoRoute(
+            path: '/categories', builder: (_, __) => const CategoriesScreen()),
         GoRoute(path: '/toppings', builder: (_, __) => const ToppingsScreen()),
-        GoRoute(path: '/inventory', builder: (_, __) => const InventoryScreen()),
+        GoRoute(
+            path: '/inventory', builder: (_, __) => const InventoryScreen()),
         GoRoute(path: '/recipes', builder: (_, __) => const RecipesScreen()),
-        GoRoute(path: '/customers', builder: (_, __) => const CustomersScreen()),
+        GoRoute(
+            path: '/customers', builder: (_, __) => const CustomersScreen()),
+        GoRoute(
+            path: '/customers/:id',
+            builder: (ctx, st) =>
+                CustomerDetailScreen(customerId: st.pathParameters['id']!)),
         GoRoute(path: '/vouchers', builder: (_, __) => const VouchersScreen()),
         GoRoute(path: '/reports', builder: (_, __) => const ReportsScreen()),
-        GoRoute(path: '/employees', builder: (_, __) => const EmployeesScreen()),
+        GoRoute(
+            path: '/employees', builder: (_, __) => const EmployeesScreen()),
         GoRoute(path: '/tables', builder: (_, __) => const TablesScreen()),
         GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
         GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
       ],
-      errorBuilder: (_, st) => Scaffold(body: Center(child: Text('404: ' + st.matchedLocation))),
+      errorBuilder: (_, st) =>
+          Scaffold(body: Center(child: Text('404: ' + st.matchedLocation))),
     );
   }
 }

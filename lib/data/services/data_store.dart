@@ -247,6 +247,12 @@ class DataStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateCustomer(Customer c) {
+    final i = customers.indexWhere((e) => e.id == c.id);
+    if (i >= 0) customers[i] = c;
+    notifyListeners();
+  }
+
   // ===== INGREDIENT =====
   Ingredient? findIngredient(String id) {
     for (final i in ingredients) {
