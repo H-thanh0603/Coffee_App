@@ -128,6 +128,22 @@ class DataStore extends ChangeNotifier {
     return null;
   }
 
+  void addCategory(ProductCategory c) {
+    categories.add(c);
+    notifyListeners();
+  }
+
+  void updateCategory(ProductCategory c) {
+    final i = categories.indexWhere((e) => e.id == c.id);
+    if (i >= 0) categories[i] = c;
+    notifyListeners();
+  }
+
+  void removeCategory(String id) {
+    categories.removeWhere((c) => c.id == id);
+    notifyListeners();
+  }
+
   // ===== PRODUCT =====
   void addProduct(Product p) {
     products.add(p);
@@ -142,6 +158,30 @@ class DataStore extends ChangeNotifier {
 
   void removeProduct(String id) {
     products.removeWhere((p) => p.id == id);
+    notifyListeners();
+  }
+
+  // ===== RECIPE =====
+  Recipe? findRecipe(String productId, DrinkSize size) {
+    for (final r in recipes) {
+      if (r.productId == productId && r.size == size) return r;
+    }
+    return null;
+  }
+
+  void addRecipe(Recipe r) {
+    recipes.add(r);
+    notifyListeners();
+  }
+
+  void updateRecipe(Recipe r) {
+    final i = recipes.indexWhere((e) => e.id == r.id);
+    if (i >= 0) recipes[i] = r;
+    notifyListeners();
+  }
+
+  void removeRecipe(String id) {
+    recipes.removeWhere((r) => r.id == id);
     notifyListeners();
   }
 
@@ -315,6 +355,11 @@ class DataStore extends ChangeNotifier {
   void updateVoucher(Voucher v) {
     final i = vouchers.indexWhere((e) => e.id == v.id);
     if (i >= 0) vouchers[i] = v;
+    notifyListeners();
+  }
+
+  void removeVoucher(String id) {
+    vouchers.removeWhere((v) => v.id == id);
     notifyListeners();
   }
 

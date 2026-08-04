@@ -22,7 +22,9 @@ class EmployeesScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Nhân viên'),
         actions: [
-          IconButton(icon: const Icon(Icons.person_add), onPressed: () => _add(context, store)),
+          IconButton(
+              icon: const Icon(Icons.person_add),
+              onPressed: () => _addEdit(context, store, null)),
         ],
       ),
       body: list.isEmpty
@@ -34,17 +36,40 @@ class EmployeesScreen extends StatelessWidget {
                 final u = list[i];
                 return Card(
                   child: ListTile(
+                    onTap: () => _addEdit(context, store, u),
                     leading: CircleAvatar(
                       backgroundColor: AppColors.primary,
-                      child: Text(u.fullName.characters.first, style: const TextStyle(color: Colors.white)),
+                      child: Text(u.fullName.characters.first,
+                          style: const TextStyle(color: Colors.white)),
                     ),
-                    title: Text(u.fullName, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(u.role.label + ' • ' + u.email + ' • ' + u.phone),
-                    trailing: Switch(
-                      value: u.active,
-                      activeColor: AppColors.primary,
-                      onChanged: (v) => store.updateUser(u.copyWith(active: v)),
-                    ),
+                    title: Text(u.fullName,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(u.role.label +
+                        ' • ' +
+                        u.email +
+                        ' • ' +
+                        u.phone),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Switch(
+                        value: u.active,
+                        activeColor: AppColors.primary,
+                        onChanged: (val) =>
+                            store.updateUser(u.copyWith(active: val)),
+                      ),
+                      PopupMenuButton<String>(
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'edit', child: Text('Sửa')),
+                          PopupMenuItem(value: 'delete', child: Text('Xóa')),
+                        ],
+                        onSelected: (val) {
+                          if (val == 'edit') {
+                            _addEdit(context, store, u);
+                          } else if (val == 'delete') {
+                            store.removeUser(u.id);
+                          }
+                        },
+                      ),
+                    ]),
                   ),
                 );
               },
@@ -52,42 +77,68 @@ class EmployeesScreen extends StatelessWidget {
     );
   }
 
-  void _add(BuildContext ctx, DataStore store) {
-    final name = TextEditingController();
-    final email = TextEditingController();
-    final phone = TextEditingController();
-    UserRole role = UserRole.cashier;
-    showDialog(context: ctx, builder: (_) => StatefulBuilder(
-      builder: (_, setSt) => AlertDialog(
-        title: const Text('Thêm nhân viên'),
-        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: name, decoration: const InputDecoration(labelText: 'Họ tên')),
-          TextField(controller: email, decoration: const InputDecoration(labelText: 'Email')),
-          TextField(controller: phone, decoration: const InputDecoration(labelText: 'SĐT')),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<UserRole>(
-            value: role,
-            decoration: const InputDecoration(labelText: 'Vai trò'),
-            items: UserRole.values.where((r) => r != UserRole.customer)
-                .map((r) => DropdownMenuItem(value: r, child: Text(r.label))).toList(),
-            onChanged: (v) => setSt(() => role = v!),
+  void _addEdit(BuildContext ctx, DataStore store, AppUser? u) {
+    final name = TextEditingController(text: u?.fullName ?? '');
+    final email = TextEditingController(text: u?.email ?? '');
+    final phone = TextEditingController(text: u?.phone ?? '');
+    UserRole role = u?.role ?? UserRole.cashier;
+    showDialog(
+      context: ctx,
+      builder: (_) => StatefulBuilder(
+        builder: (_, setSt) => AlertDialog(
+          title: Text(u == null ? 'Thêm nhân viên' : 'Sửa nhân viên'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: name,
+                  decoration: const InputDecoration(labelText: 'Họ tên')),
+              TextField(controller: email,
+                  decoration: const InputDecoration(labelText: 'Email')),
+              TextField(controller: phone,
+                  decoration: const InputDecoration(labelText: 'SĐT')),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<UserRole>(
+                initialValue: role,
+                decoration: const InputDecoration(labelText: 'Vai trò'),
+                items: UserRole.values
+                    .where((r) => r != UserRole.customer)
+                    .map((r) =>
+                        DropdownMenuItem(value: r, child: Text(r.label)))
+                    .toList(),
+                onChanged: (v) => setSt(() => role = v!),
+              ),
+            ]),
           ),
-        ])),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Hủy')),
-          ElevatedButton(onPressed: () {
-            if (name.text.trim().isEmpty || email.text.trim().isEmpty) return;
-            store.addUser(AppUser(
-              id: const Uuid().v4(),
-              fullName: name.text.trim(),
-              email: email.text.trim().toLowerCase(),
-              phone: phone.text.trim(),
-              role: role,
-            ));
-            Navigator.pop(ctx);
-          }, child: const Text('Thêm')),
-        ],
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('Hủy')),
+            ElevatedButton(
+              onPressed: () {
+                if (name.text.trim().isEmpty || email.text.trim().isEmpty) {
+                  return;
+                }
+                if (u == null) {
+                  store.addUser(AppUser(
+                    id: const Uuid().v4(),
+                    fullName: name.text.trim(),
+                    email: email.text.trim().toLowerCase(),
+                    phone: phone.text.trim(),
+                    role: role,
+                  ));
+                } else {
+                  store.updateUser(u.copyWith(
+                    fullName: name.text.trim(),
+                    email: email.text.trim().toLowerCase(),
+                    phone: phone.text.trim(),
+                    role: role,
+                  ));
+                }
+                Navigator.pop(ctx);
+              },
+              child: const Text('Lưu'),
+            ),
+          ],
+        ),
       ),
-    ));
+    );
   }
 }

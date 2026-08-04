@@ -73,6 +73,7 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 
 ### 8. Quản lý công thức pha chế
 - Mỗi món × size có công thức riêng (định lượng từng nguyên liệu)
+- **Thêm/sửa/xóa công thức**; cảnh báo sản phẩm chưa có công thức (không trừ kho được)
 - Tự tính giá vốn và lợi nhuận ước tính
 
 ### 9. Quản lý khách hàng & tích điểm
@@ -83,8 +84,8 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 
 ### 10. Voucher / Khuyến mãi
 - Giảm theo phần trăm hoặc số tiền cố định
-- Cài: ngày bắt đầu/kết thúc, đơn tối thiểu, giảm tối đa, lượt dùng
-- Toggle hoạt động ngay trong list
+- Form đầy đủ: ngày bắt đầu/kết thúc (date picker), đơn tối thiểu, giảm tối đa, lượt dùng
+- **Sửa / xóa** voucher, toggle hoạt động ngay trong list
 
 ### 11. Báo cáo doanh thu
 - Bộ lọc: Hôm nay / 7 ngày / 30 ngày
@@ -93,8 +94,8 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 - TB/đơn
 
 ### 12. Quản lý nhân viên (Admin)
-- Thêm/sửa nhân viên với 4 vai trò
-- Toggle trạng thái hoạt động
+- Thêm/sửa nhân viên với 4 vai trò (tap để sửa)
+- Toggle trạng thái hoạt động, xóa nhân viên
 
 ### 13. Giao diện khách hàng
 - 3 tab: Menu / Đơn của tôi / Voucher khả dụng
@@ -111,6 +112,11 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 - Màn **Cài đặt** trong drawer (mọi role)
 - Chuyển đổi **Light / Dark / Theo hệ thống**, lưu lựa chọn qua SharedPreferences
 - Toàn bộ màn hình dùng bảng màu thích ứng theo theme
+
+### 16. Quản lý menu (Admin)
+- **Sản phẩm**: thêm/sửa/xóa món, cài **giá theo size S/M/L**, **gắn topping** có thể chọn, toggle hết hàng/tạm ẩn
+- **Danh mục**: thêm/sửa/xóa, icon/emoji, bật/tắt hiển thị
+- **Topping**: thêm/sửa/xóa, cài giá, toggle còn hàng
 
 ## 📁 Cấu trúc thư mục
 

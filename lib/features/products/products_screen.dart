@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/constants/enums.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_drawer.dart';
@@ -113,51 +114,125 @@ class _ProductsScreenState extends State<ProductsScreen> {
   void _addEdit(BuildContext ctx, DataStore store, Product? p) {
     final name = TextEditingController(text: p?.name ?? '');
     final desc = TextEditingController(text: p?.description ?? '');
-    final price = TextEditingController(text: (p?.basePrice ?? 30000).toStringAsFixed(0));
+    final priceS = TextEditingController(
+        text: (p?.priceBySize[DrinkSize.s] ?? 25000).toStringAsFixed(0));
+    final priceM = TextEditingController(
+        text: (p?.priceBySize[DrinkSize.m] ?? 30000).toStringAsFixed(0));
+    final priceL = TextEditingController(
+        text: (p?.priceBySize[DrinkSize.l] ?? 38000).toStringAsFixed(0));
     final emoji = TextEditingController(text: p?.emoji ?? '☕');
     String catId = p?.categoryId ?? store.categories.first.id;
-    showDialog(context: ctx, builder: (_) => StatefulBuilder(
-      builder: (_, setSt) => AlertDialog(
-        title: Text(p == null ? 'Thêm sản phẩm' : 'Sửa sản phẩm'),
-        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: name, decoration: const InputDecoration(labelText: 'Tên')),
-          TextField(controller: desc, decoration: const InputDecoration(labelText: 'Mô tả')),
-          TextField(controller: price, decoration: const InputDecoration(labelText: 'Giá cơ bản'), keyboardType: TextInputType.number),
-          TextField(controller: emoji, decoration: const InputDecoration(labelText: 'Emoji / icon')),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            value: catId,
-            decoration: const InputDecoration(labelText: 'Danh mục'),
-            items: store.categories.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
-            onChanged: (v) => setSt(() => catId = v!),
+    final topIds = <String>[...?p?.availableToppingIds];
+
+    showDialog(
+      context: ctx,
+      builder: (_) => StatefulBuilder(
+        builder: (_, setSt) => AlertDialog(
+          title: Text(p == null ? 'Thêm sản phẩm' : 'Sửa sản phẩm'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: name,
+                  decoration: const InputDecoration(labelText: 'Tên')),
+              TextField(controller: desc,
+                  decoration: const InputDecoration(labelText: 'Mô tả')),
+              TextField(controller: emoji,
+                  decoration: const InputDecoration(labelText: 'Emoji / icon')),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(
+                    child: TextField(controller: priceS,
+                        decoration: const InputDecoration(labelText: 'Size S'),
+                        keyboardType: TextInputType.number)),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: TextField(controller: priceM,
+                        decoration: const InputDecoration(labelText: 'Size M'),
+                        keyboardType: TextInputType.number)),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: TextField(controller: priceL,
+                        decoration: const InputDecoration(labelText: 'Size L'),
+                        keyboardType: TextInputType.number)),
+              ]),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: catId,
+                decoration: const InputDecoration(labelText: 'Danh mục'),
+                items: store.categories
+                    .map((c) => DropdownMenuItem(
+                        value: c.id, child: Text(c.icon + ' ' + c.name)))
+                    .toList(),
+                onChanged: (v) => setSt(() => catId = v!),
+              ),
+              const SizedBox(height: 12),
+              const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Topping có thể chọn',
+                      style: TextStyle(fontWeight: FontWeight.w700))),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: store.toppings.map((t) {
+                  final sel = topIds.contains(t.id);
+                  return ChoiceChip(
+                    label: Text(t.name),
+                    selected: sel,
+                    onSelected: (v) => setSt(() {
+                      if (v) {
+                        topIds.add(t.id);
+                      } else {
+                        topIds.remove(t.id);
+                      }
+                    }),
+                    selectedColor: AppColors.primary,
+                    labelStyle: TextStyle(
+                        color: sel ? Colors.white : AppColors.textPrimary),
+                  );
+                }).toList(),
+              ),
+            ]),
           ),
-        ])),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Hủy')),
-          ElevatedButton(onPressed: () {
-            final priceVal = double.tryParse(price.text) ?? 30000;
-            if (p == null) {
-              store.addProduct(Product(
-                id: 'p-' + const Uuid().v4(),
-                name: name.text.trim(),
-                description: desc.text.trim(),
-                emoji: emoji.text.trim().isEmpty ? '☕' : emoji.text.trim(),
-                categoryId: catId,
-                basePrice: priceVal,
-              ));
-            } else {
-              store.updateProduct(p.copyWith(
-                name: name.text.trim(),
-                description: desc.text.trim(),
-                emoji: emoji.text.trim(),
-                categoryId: catId,
-                basePrice: priceVal,
-              ));
-            }
-            Navigator.pop(ctx);
-          }, child: const Text('Lưu')),
-        ],
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('Hủy')),
+            ElevatedButton(
+              onPressed: () {
+                final mVal = double.tryParse(priceM.text) ?? 30000;
+                final bySize = <DrinkSize, double>{
+                  DrinkSize.s: double.tryParse(priceS.text) ?? mVal,
+                  DrinkSize.m: mVal,
+                  DrinkSize.l: double.tryParse(priceL.text) ?? mVal,
+                };
+                if (p == null) {
+                  store.addProduct(Product(
+                    id: 'p-' + const Uuid().v4(),
+                    name: name.text.trim(),
+                    description: desc.text.trim(),
+                    emoji: emoji.text.trim().isEmpty ? '☕' : emoji.text.trim(),
+                    categoryId: catId,
+                    basePrice: mVal,
+                    priceBySize: bySize,
+                    availableToppingIds: topIds,
+                  ));
+                } else {
+                  store.updateProduct(p.copyWith(
+                    name: name.text.trim(),
+                    description: desc.text.trim(),
+                    emoji: emoji.text.trim(),
+                    categoryId: catId,
+                    basePrice: mVal,
+                    priceBySize: bySize,
+                    availableToppingIds: topIds,
+                  ));
+                }
+                Navigator.pop(ctx);
+              },
+              child: const Text('Lưu'),
+            ),
+          ],
+        ),
       ),
-    ));
+    );
   }
 }

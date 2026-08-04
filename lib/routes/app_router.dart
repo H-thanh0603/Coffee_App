@@ -13,7 +13,9 @@ import '../features/customers/customers_screen.dart';
 import '../features/orders/order_detail_screen.dart';
 import '../features/orders/orders_history_screen.dart';
 import '../features/pos/pos_screen.dart';
+import '../features/products/categories_screen.dart';
 import '../features/products/products_screen.dart';
+import '../features/products/toppings_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/recipes/recipes_screen.dart';
 import '../features/reports/reports_screen.dart';
@@ -59,6 +61,8 @@ class AppRouter {
         GoRoute(path: '/orders/:id', builder: (ctx, st) =>
             OrderDetailScreen(orderId: st.pathParameters['id']!)),
         GoRoute(path: '/products', builder: (_, __) => const ProductsScreen()),
+        GoRoute(path: '/categories', builder: (_, __) => const CategoriesScreen()),
+        GoRoute(path: '/toppings', builder: (_, __) => const ToppingsScreen()),
         GoRoute(path: '/inventory', builder: (_, __) => const InventoryScreen()),
         GoRoute(path: '/recipes', builder: (_, __) => const RecipesScreen()),
         GoRoute(path: '/customers', builder: (_, __) => const CustomersScreen()),

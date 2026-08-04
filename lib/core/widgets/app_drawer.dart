@@ -20,6 +20,8 @@ class AppDrawer extends StatelessWidget {
       items.addAll([
         _NavItem(Icons.dashboard, 'Dashboard', '/admin'),
         _NavItem(Icons.local_cafe, 'Menu sản phẩm', '/products'),
+        _NavItem(Icons.category, 'Danh mục', '/categories'),
+        _NavItem(Icons.icecream, 'Topping', '/toppings'),
         _NavItem(Icons.point_of_sale, 'Bán hàng POS', '/cashier'),
         _NavItem(Icons.receipt_long, 'Đơn hàng', '/orders'),
         _NavItem(Icons.table_restaurant, 'Bàn', '/tables'),

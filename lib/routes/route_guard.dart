@@ -13,6 +13,8 @@ class RouteGuard {
     '/customer': [UserRole.admin, UserRole.customer],
     '/orders': [UserRole.admin, UserRole.cashier, UserRole.waiter],
     '/products': [UserRole.admin],
+    '/categories': [UserRole.admin],
+    '/toppings': [UserRole.admin],
     '/inventory': [UserRole.admin],
     '/recipes': [UserRole.admin],
     '/customers': [UserRole.admin, UserRole.cashier],

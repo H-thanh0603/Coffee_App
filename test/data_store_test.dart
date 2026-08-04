@@ -2,7 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:smartcafe/core/constants/enums.dart';
+import 'package:smartcafe/data/models/category.dart';
 import 'package:smartcafe/data/models/order_item.dart';
+import 'package:smartcafe/data/models/recipe.dart';
 import 'package:smartcafe/data/models/user.dart';
 import 'package:smartcafe/data/models/voucher.dart';
 import 'package:smartcafe/data/services/data_store.dart';
@@ -247,6 +249,50 @@ void main() {
       final s2 = DataStore();
       expect(StoreCodec.decode(s2, 'khong-phai-json'), isFalse);
       expect(s2.products, isEmpty);
+    });
+  });
+
+  group('CRUD Admin', () {
+    test('thêm/sửa/xóa danh mục', () {
+      final before = store.categories.length;
+      store.addCategory(ProductCategory(id: 'cat-test', name: 'Test Cat'));
+      expect(store.categories.length, before + 1);
+      store.updateCategory(
+          ProductCategory(id: 'cat-test', name: 'Test Cat 2'));
+      expect(store.findCategory('cat-test')!.name, 'Test Cat 2');
+      store.removeCategory('cat-test');
+      expect(store.findCategory('cat-test'), isNull);
+    });
+
+    test('thêm/sửa/xóa công thức', () {
+      final p = store.products.first;
+      final ing = store.ingredients.first;
+      store.addRecipe(Recipe(
+        id: 'r-test',
+        productId: p.id,
+        size: DrinkSize.s,
+        items: [
+          RecipeItem(ingredientId: ing.id, quantity: 10, unit: ing.unit)
+        ],
+      ));
+      expect(store.findRecipe(p.id, DrinkSize.s)!.items.length, 1);
+      store.updateRecipe(Recipe(
+        id: 'r-test',
+        productId: p.id,
+        size: DrinkSize.s,
+        items: [
+          RecipeItem(ingredientId: ing.id, quantity: 20, unit: ing.unit)
+        ],
+      ));
+      expect(store.findRecipe(p.id, DrinkSize.s)!.items.first.quantity, 20);
+      store.removeRecipe('r-test');
+      expect(store.findRecipe(p.id, DrinkSize.s), isNull);
+    });
+
+    test('xóa voucher', () {
+      final v = store.vouchers.first;
+      store.removeVoucher(v.id);
+      expect(store.findVoucherByCode(v.code), isNull);
     });
   });
 }
