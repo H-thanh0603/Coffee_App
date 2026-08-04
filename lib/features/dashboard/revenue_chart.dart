@@ -6,7 +6,10 @@ import '../../core/utils/formatters.dart';
 
 class RevenueChart extends StatelessWidget {
   final List<MapEntry<String, double>> data;
-  const RevenueChart({super.key, required this.data});
+
+  /// Hiển thị label dưới trục mỗi [labelEvery] cột (tránh dày khi nhiều ngày).
+  final int labelEvery;
+  const RevenueChart({super.key, required this.data, this.labelEvery = 1});
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +34,8 @@ class RevenueChart extends StatelessWidget {
                   toY: data[i].value,
                   color: AppColors.primary,
                   width: 18,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(6)),
                 ),
               ],
             ),
@@ -53,7 +57,8 @@ class RevenueChart extends StatelessWidget {
                   if (v == 0) return const SizedBox();
                   return Text(
                     (v / 1000).toStringAsFixed(0) + 'k',
-                    style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                    style:
+                        TextStyle(fontSize: 10, color: AppColors.textSecondary),
                   );
                 },
                 interval: maxY / 4,
@@ -63,23 +68,36 @@ class RevenueChart extends StatelessWidget {
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 28,
-                getTitlesWidget: (v, _) => Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(
-                    data[v.toInt()].key,
-                    style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
-                  ),
-                ),
+                getTitlesWidget: (v, _) {
+                  final i = v.toInt();
+                  if (i < 0 || i >= data.length) return const SizedBox();
+                  if (i % labelEvery != 0 && i != data.length - 1) {
+                    return const SizedBox();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      data[i].key,
+                      style: TextStyle(
+                          fontSize: 10, color: AppColors.textSecondary),
+                    ),
+                  );
+                },
               ),
             ),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
           barTouchData: BarTouchData(
             touchTooltipData: BarTouchTooltipData(
               getTooltipItem: (g, _, r, __) => BarTooltipItem(
                 Fmt.money(r.toY),
-                const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600),
               ),
             ),
           ),

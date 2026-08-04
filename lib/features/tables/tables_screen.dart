@@ -4,11 +4,14 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/enums.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_drawer.dart';
+import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/status_badge.dart';
 import '../../data/models/cafe_table.dart';
 import '../../data/models/order.dart';
 import '../../data/services/data_store.dart';
+import '../auth/auth_provider.dart';
 import '../cart/cart_provider.dart';
 
 class TablesScreen extends StatelessWidget {
@@ -21,7 +24,15 @@ class TablesScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       drawer: const AppDrawer(),
-      appBar: AppBar(title: const Text('Sơ đồ bàn')),
+      appBar: AppBar(
+        title: const Text('Sơ đồ bàn'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () => _showNotifications(context, store),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
@@ -45,6 +56,36 @@ class TablesScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  void _showNotifications(BuildContext context, DataStore store) {
+    final role = context.read<AuthProvider>().role;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) {
+        final list =
+            role == null ? <dynamic>[] : store.notificationsForRole(role);
+        if (list.isEmpty) {
+          return const SizedBox(
+              height: 200,
+              child: EmptyState(emoji: '🔔', title: 'Không có thông báo'));
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(8),
+          itemCount: list.length,
+          itemBuilder: (_, i) {
+            final n = list[i];
+            return ListTile(
+              leading: const Icon(Icons.notifications),
+              title: Text(n.title),
+              subtitle: Text(n.message),
+              trailing: Text(Fmt.relative(n.createdAt),
+                  style: const TextStyle(fontSize: 11)),
+            );
+          },
+        );
+      },
     );
   }
 }

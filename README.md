@@ -46,7 +46,7 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 - Giỏ hàng: chọn bàn / mang đi, chọn khách hàng, áp voucher
 - Tự tính tạm tính / giảm giá / tổng tiền
 - Thanh toán: Tiền mặt / Chuyển khoản / Ví điện tử / QR Banking (mô phỏng)
-- Sau thanh toán: gửi đơn sang barista, **tự động trừ kho theo công thức**, cộng điểm khách
+- Sau thanh toán: gửi đơn sang barista, **tự động trừ kho theo công thức**, cộng điểm khách, **hiện hóa đơn** (xem lại được từ chi tiết đơn)
 
 ### 4. Quản lý đơn hàng realtime
 - 7 trạng thái: pending → confirmed → preparing → ready → served → paid / cancelled
@@ -61,7 +61,7 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 
 ### 6. Quản lý bàn (Sơ đồ bàn)
 - 12 bàn (B01–B12) với 5 trạng thái màu hiển thị
-- Tap bàn để: tạo đơn, chuyển trạng thái, xem đơn hiện tại
+- Tap bàn để: tạo đơn (chọn sẵn bàn trong giỏ), **chuyển bàn**, **gộp bàn**, đổi trạng thái
 - Tự động cập nhật khi tạo/thanh toán đơn
 
 ### 7. Quản lý kho nguyên liệu
@@ -77,10 +77,11 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 - Tự tính giá vốn và lợi nhuận ước tính
 
 ### 9. Quản lý khách hàng & tích điểm
-- Tìm theo tên / SĐT
+- Tìm theo tên / SĐT; tap khách để xem **chi tiết**: hạng, điểm, đã chi, **lịch sử đơn**, **món hay dùng**; sửa thông tin
 - 4 hạng theo điểm: **Đồng / Bạc / Vàng / Kim cương**
 - Quy đổi: 10.000đ = 1 điểm; 100 điểm = giảm 10.000đ
-- Tự cộng điểm và nâng hạng sau thanh toán
+- **Dùng điểm giảm giá ngay tại giỏ hàng** khi đã chọn khách hàng
+- Tự cộng điểm và nâng hạng sau thanh toán; khách hàng xem **món bạn hay dùng** ở menu
 
 ### 10. Voucher / Khuyến mãi
 - Giảm theo phần trăm hoặc số tiền cố định
@@ -88,7 +89,8 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 - **Sửa / xóa** voucher, toggle hoạt động ngay trong list
 
 ### 11. Báo cáo doanh thu
-- Bộ lọc: Hôm nay / 7 ngày / 30 ngày
+- Bộ lọc: Hôm nay / 7 ngày / 30 ngày (chart đổi theo bộ lọc)
+- **Lợi nhuận ước tính** (doanh thu - giá vốn theo công thức) + biên lợi nhuận
 - Doanh thu theo phương thức thanh toán, theo nhân viên
 - Top món bán chạy / bán chậm
 - TB/đơn
@@ -104,9 +106,11 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 ### 14. Chức năng thông minh (logic-based)
 - Cảnh báo nguyên liệu dưới ngưỡng tối thiểu
 - Cảnh báo doanh thu giảm > 20% so với hôm qua
+- Cảnh báo **nhiều đơn bị hủy** trong 7 ngày
 - Gợi ý nhập hàng dựa trên tốc độ tiêu thụ 7 ngày
 - Gợi ý khuyến mãi cho món bán chậm
-- Cảnh báo đơn pha quá 10 phút
+- Cảnh báo đơn pha quá 10 phút (màu đỏ ở quầy barista)
+- **Thông báo trong app**: đơn mới cho barista, nguyên liệu sắp hết, voucher sắp hết hạn (<=3 ngày), bàn chờ thanh toán, chuyển/gộp bàn
 
 ### 15. Cài đặt & Dark mode
 - Màn **Cài đặt** trong drawer (mọi role)

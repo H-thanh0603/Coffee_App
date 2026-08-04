@@ -58,9 +58,11 @@ class DataStore extends ChangeNotifier {
     final raw = prefs.getString(storageKey);
     // Có dữ liệu đã lưu -> khôi phục thay vì seed lại
     if (raw != null && raw.isNotEmpty && StoreCodec.decode(this, raw)) {
+      _checkVoucherAlerts();
       return;
     }
     _seed();
+    _checkVoucherAlerts();
     await _persist();
   }
 
@@ -222,6 +224,14 @@ class DataStore extends ChangeNotifier {
     if (t != null) {
       t.status = status;
       t.currentOrderId = orderId;
+      if (status == TableStatus.waiting) {
+        _addNotification(
+          title: 'Bàn chờ thanh toán',
+          message: t.tableName + ' đang chờ thanh toán',
+          type: 'table_waiting',
+          role: UserRole.cashier,
+        );
+      }
       notifyListeners();
     }
   }
@@ -357,12 +367,14 @@ class DataStore extends ChangeNotifier {
 
   void addVoucher(Voucher v) {
     vouchers.add(v);
+    _checkVoucherAlerts();
     notifyListeners();
   }
 
   void updateVoucher(Voucher v) {
     final i = vouchers.indexWhere((e) => e.id == v.id);
     if (i >= 0) vouchers[i] = v;
+    _checkVoucherAlerts();
     notifyListeners();
   }
 
@@ -641,6 +653,27 @@ class DataStore extends ChangeNotifier {
     }
   }
 
+  /// Cảnh báo voucher sắp hết hạn (còn <= 3 ngày).
+  void _checkVoucherAlerts() {
+    final now = DateTime.now();
+    for (final v in vouchers) {
+      if (v.active && !v.isExpired && v.endDate.difference(now).inDays <= 3) {
+        final exists = notifications.any((n) =>
+            n.type == 'voucher_expiring' &&
+            n.message.contains(v.code) &&
+            !n.isRead);
+        if (!exists) {
+          _addNotification(
+            title: 'Voucher sắp hết hạn',
+            message: v.code + ' hết hạn ' + Fmt.date(v.endDate),
+            type: 'voucher_expiring',
+            role: UserRole.admin,
+          );
+        }
+      }
+    }
+  }
+
   // ===== STATS =====
   List<AppOrder> get paidOrders =>
       orders.where((o) => o.paymentStatus == PaymentStatus.paid).toList();
@@ -672,6 +705,37 @@ class DataStore extends ChangeNotifier {
       result.add(MapEntry(Fmt.shortDate(d), revenueOnDate(d)));
     }
     return result;
+  }
+
+  /// Doanh thu N ngày gần nhất (dùng cho báo cáo filter 1/7/30 ngày).
+  List<MapEntry<String, double>> revenueLastNDays(int n) {
+    final result = <MapEntry<String, double>>[];
+    final now = DateTime.now();
+    for (var i = n - 1; i >= 0; i--) {
+      final d =
+          DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
+      result.add(MapEntry(Fmt.shortDate(d), revenueOnDate(d)));
+    }
+    return result;
+  }
+
+  /// Lợi nhuận ước tính: doanh thu - giá vốn (theo công thức pha chế).
+  double profitInRange(int days) {
+    final since = DateTime.now().subtract(Duration(days: days));
+    double profit = 0;
+    for (final o in paidOrders.where((o) => o.createdAt.isAfter(since))) {
+      for (final it in o.items) {
+        final r = findRecipe(it.productId, it.size);
+        if (r == null) continue;
+        double cost = 0;
+        for (final ri in r.items) {
+          final ing = findIngredient(ri.ingredientId);
+          cost += (ing?.costPerUnit ?? 0) * ri.quantity;
+        }
+        profit += it.totalPrice - cost * it.quantity;
+      }
+    }
+    return profit;
   }
 
   /// Top sản phẩm bán chạy theo số ly trong 7 ngày
