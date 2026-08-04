@@ -17,9 +17,11 @@ import '../features/products/products_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/recipes/recipes_screen.dart';
 import '../features/reports/reports_screen.dart';
+import '../features/settings/settings_screen.dart';
 import '../features/tables/tables_screen.dart';
 import '../features/vouchers/vouchers_screen.dart';
 import 'role_router.dart';
+import 'route_guard.dart';
 
 class AppRouter {
   static GoRouter create(AuthProvider auth) {
@@ -37,6 +39,10 @@ class AppRouter {
         if (!loggedIn && loc != '/login') return '/login';
         // Đã login rồi mà còn vào /login -> đẩy về home theo role
         if (loggedIn && loc == '/login') {
+          return RoleRouter.homeFor(auth.role!);
+        }
+        // Phân quyền theo role: vào màn không đúng quyền -> về home của role
+        if (loggedIn && !RouteGuard.allowed(loc, auth.role!)) {
           return RoleRouter.homeFor(auth.role!);
         }
         return null;
@@ -60,6 +66,7 @@ class AppRouter {
         GoRoute(path: '/reports', builder: (_, __) => const ReportsScreen()),
         GoRoute(path: '/employees', builder: (_, __) => const EmployeesScreen()),
         GoRoute(path: '/tables', builder: (_, __) => const TablesScreen()),
+        GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
         GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
       ],
       errorBuilder: (_, st) => Scaffold(body: Center(child: Text('404: ' + st.matchedLocation))),

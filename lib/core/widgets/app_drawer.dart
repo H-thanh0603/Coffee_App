@@ -47,6 +47,7 @@ class AppDrawer extends StatelessWidget {
     } else {
       items.add(_NavItem(Icons.local_cafe, 'Menu', '/customer'));
     }
+    items.add(_NavItem(Icons.settings, 'Cài đặt', '/settings'));
     items.add(_NavItem(Icons.person_outline, 'Hồ sơ', '/profile'));
 
     return Drawer(

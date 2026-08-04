@@ -18,13 +18,13 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 |-------|-----------|
 | Framework | Flutter 3.10+ / Dart 3.0+ |
 | State management | Provider 6 + ChangeNotifier |
-| Routing | go_router 13 (declarative + auth guard) |
-| UI | Material 3 + Google Fonts (Inter) |
+| Routing | go_router 13 (declarative + auth guard + phân quyền theo role) |
+| UI | Material 3 + Google Fonts (Inter) + Dark/Light mode |
 | Charts | fl_chart 0.66 |
-| Data | In-memory store (mô phỏng Firestore, dễ thay thế) |
+| Data | In-memory store (mô phỏng Firestore) + persist qua shared_preferences |
 | Utils | uuid, intl, collection |
 
-> Lưu ý: dữ liệu được giữ trong bộ nhớ qua `DataStore` (ChangeNotifier) — kiến trúc realtime sẵn sàng để swap sang Firestore / REST / SQLite.
+> Lưu ý: dữ liệu được giữ trong bộ nhớ qua `DataStore` (ChangeNotifier) và **tự lưu xuống SharedPreferences** sau mỗi thao tác — refresh/đóng app không mất dữ liệu. Kiến trúc sẵn sàng swap sang Firestore / REST / SQLite.
 
 ## ✨ Tính năng chính
 
@@ -32,6 +32,7 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 - Login email/password với mock auth (mật khẩu demo: `123456`)
 - 5 role: **Admin / Cashier / Barista / Waiter / Customer**
 - Auth guard tự động redirect theo route được phép
+- **Phân quyền theo role ở tầng router** (`RouteGuard`): user nhập thẳng URL màn không đúng quyền sẽ bị đẩy về màn hình của role
 
 ### 2. Admin Dashboard
 - Thẻ thống kê: Doanh thu hôm nay, số đơn, khách, bàn đang phục vụ
@@ -106,6 +107,11 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 - Gợi ý khuyến mãi cho món bán chậm
 - Cảnh báo đơn pha quá 10 phút
 
+### 15. Cài đặt & Dark mode
+- Màn **Cài đặt** trong drawer (mọi role)
+- Chuyển đổi **Light / Dark / Theo hệ thống**, lưu lựa chọn qua SharedPreferences
+- Toàn bộ màn hình dùng bảng màu thích ứng theo theme
+
 ## 📁 Cấu trúc thư mục
 
 ```
@@ -114,13 +120,13 @@ lib/
 ├── app.dart                           # Root widget + theme
 ├── core/
 │   ├── constants/enums.dart           # UserRole, OrderStatus, TableStatus...
-│   ├── theme/                         # AppColors, AppTheme (Material 3)
+│   ├── theme/                         # AppColors (light/dark), AppTheme, ThemeProvider
 │   ├── utils/formatters.dart          # Money, date, time, relative
 │   └── widgets/                       # AppDrawer, StatCard, StatusBadge, EmptyState
 ├── data/
 │   ├── models/                        # 13 model: User, Product, Order, Topping...
 │   ├── seed/                          # Dữ liệu mẫu (16 món, 12 bàn, 15 NL...)
-│   └── services/data_store.dart       # In-memory DataStore (ChangeNotifier)
+│   └── services/                      # data_store.dart + persistence.dart (JSON save/load)
 ├── features/
 │   ├── auth/                          # Login, Splash, AuthProvider
 │   ├── cart/                          # CartProvider
@@ -136,10 +142,13 @@ lib/
 │   ├── reports/                       # Báo cáo doanh thu
 │   ├── employees/                     # Quản lý NV
 │   ├── products/                      # Menu CRUD
+│   ├── settings/                      # Cài đặt + Dark mode
 │   ├── profile/                       # Hồ sơ
 │   └── customer_app/                  # Giao diện khách hàng
-└── routes/                            # GoRouter + RoleRouter
+└── routes/                            # GoRouter + RoleRouter + RouteGuard
 ```
+
+`test/` có 22 test: nghiệp vụ DataStore (order, kho, voucher, điểm), phân quyền RouteGuard, smoke test app.
 
 ## 🚀 Cài đặt & chạy app
 

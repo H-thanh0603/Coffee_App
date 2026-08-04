@@ -1,0 +1,252 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:smartcafe/core/constants/enums.dart';
+import 'package:smartcafe/data/models/order_item.dart';
+import 'package:smartcafe/data/models/user.dart';
+import 'package:smartcafe/data/models/voucher.dart';
+import 'package:smartcafe/data/services/data_store.dart';
+import 'package:smartcafe/data/services/persistence.dart';
+import 'package:smartcafe/features/auth/auth_provider.dart';
+
+AppUser? _cashier(DataStore s) =>
+    s.users.where((u) => u.role == UserRole.cashier).firstOrNull;
+
+void main() {
+  late DataStore store;
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    store = DataStore();
+    await store.init();
+  });
+
+  group('AuthProvider', () {
+    test('đăng nhập sai mật khẩu / email không tồn tại bị từ chối', () {
+      final auth = AuthProvider(store);
+      expect(auth.login('admin@smartcafe.com', 'sai'), isNotNull);
+      expect(auth.login('khong@ton-tai.vn', '123456'), isNotNull);
+    });
+
+    test('đăng nhập đúng -> isLoggedIn + role admin', () {
+      final auth = AuthProvider(store);
+      final err = auth.login('admin@smartcafe.com', '123456');
+      expect(err, isNull);
+      expect(auth.isLoggedIn, isTrue);
+      expect(auth.role, UserRole.admin);
+    });
+
+    test('tài khoản bị khóa bị chặn', () {
+      final auth = AuthProvider(store);
+      final u = _cashier(store)!;
+      store.updateUser(u.copyWith(active: false));
+      expect(auth.login(u.email, '123456'), isNotNull);
+      expect(auth.isLoggedIn, isFalse);
+    });
+  });
+
+  group('Voucher', () {
+    test('giảm % có maxDiscount', () {
+      final v = Voucher(
+        id: 'v1',
+        code: 'P10',
+        name: 'Percent',
+        discountType: DiscountType.percent,
+        discountValue: 10,
+        maxDiscount: 20000,
+        startDate: DateTime.now().subtract(const Duration(days: 1)),
+        endDate: DateTime.now().add(const Duration(days: 30)),
+        usageLimit: 100,
+      );
+      expect(v.calcDiscount(100000), 10000); // 10% = 10k (chưa vượt cap)
+      expect(v.calcDiscount(500000), 20000); // 10% = 50k -> chặn 20k
+    });
+
+    test('giảm số tiền cố định, tôn trọng minOrder', () {
+      final v = Voucher(
+        id: 'v2',
+        code: 'FIX',
+        name: 'Fix',
+        discountType: DiscountType.amount,
+        discountValue: 15000,
+        minOrderValue: 100000,
+        startDate: DateTime.now().subtract(const Duration(days: 1)),
+        endDate: DateTime.now().add(const Duration(days: 30)),
+      );
+      expect(v.calcDiscount(50000), 0); // chưa đạt đơn tối thiểu
+      expect(v.calcDiscount(120000), 15000);
+    });
+
+    test('hết hạn thì isAvailable = false', () {
+      final v = Voucher(
+        id: 'v3',
+        code: 'OLD',
+        name: 'Old',
+        discountType: DiscountType.amount,
+        discountValue: 1000,
+        startDate: DateTime.now().subtract(const Duration(days: 30)),
+        endDate: DateTime.now().subtract(const Duration(days: 1)),
+      );
+      expect(v.isAvailable, isFalse);
+    });
+  });
+
+  group('Order / Doanh thu', () {
+    test('createOrder tính subtotal - discount = total, đổi trạng thái bàn', () {
+      final cashier = _cashier(store)!;
+      final table = store.tables.first;
+      final product = store.products.first;
+      final voucher = store.vouchers.first;
+      final usedBefore = voucher.usedCount;
+
+      final item = OrderItem(
+        id: 'it1',
+        productId: product.id,
+        productName: product.name,
+        emoji: product.emoji,
+        size: DrinkSize.m,
+        unitPrice: product.priceFor(DrinkSize.m),
+        quantity: 2,
+      );
+      final order = store.createOrder(
+        cashier: cashier,
+        items: [item],
+        orderType: OrderType.dineIn,
+        tableId: table.id,
+        voucher: voucher,
+      );
+
+      expect(order.subtotal, closeTo(item.totalPrice, 0.001));
+      expect(order.total,
+          closeTo(order.subtotal - voucher.calcDiscount(order.subtotal), 0.001));
+      expect(order.orderStatus, OrderStatus.pending);
+      expect(store.findTable(table.id)!.status, TableStatus.serving);
+      expect(voucher.usedCount, usedBefore + 1);
+      // Thông báo "đơn mới" đẩy cho barista
+      expect(
+        store.notificationsForRole(UserRole.barista)
+            .any((n) => n.type == 'order_new'),
+        isTrue,
+      );
+    });
+
+    test('trừ kho theo công thức khi đơn chuyển sang preparing', () {
+      final cashier = _cashier(store)!;
+      final recipe = store.recipes.first;
+      final product = store.products.firstWhere((p) => p.id == recipe.productId);
+      final ing = store.findIngredient(recipe.items.first.ingredientId)!;
+      final stockBefore = ing.currentStock;
+
+      final item = OrderItem(
+        id: 'it2',
+        productId: product.id,
+        productName: product.name,
+        size: recipe.size,
+        unitPrice: 10000,
+        quantity: 1,
+      );
+      final order = store.createOrder(
+        cashier: cashier,
+        items: [item],
+        orderType: OrderType.takeaway,
+      );
+
+      // Chưa trừ khi đơn mới tạo
+      expect(store.findIngredient(recipe.items.first.ingredientId)!.currentStock,
+          closeTo(stockBefore, 0.001));
+
+      store.updateOrderStatus(order.id, OrderStatus.preparing);
+      final used = recipe.items.first.quantity;
+      expect(store.findIngredient(recipe.items.first.ingredientId)!.currentStock,
+          closeTo(stockBefore - used, 0.001));
+    });
+
+    test('payOrder: cộng điểm khách (10k=1 điểm) + bàn cần dọn', () {
+      final cashier = _cashier(store)!;
+      final cust = store.customers.first;
+      final table = store.tables.first;
+      final pointsBefore = cust.points;
+
+      final item = OrderItem(
+        id: 'it3',
+        productId: store.products.first.id,
+        productName: store.products.first.name,
+        size: DrinkSize.m,
+        unitPrice: 10000,
+        quantity: 1,
+      );
+      final order = store.createOrder(
+        cashier: cashier,
+        items: [item],
+        orderType: OrderType.dineIn,
+        tableId: table.id,
+        customerId: cust.id,
+      );
+      store.payOrder(order.id, PaymentMethod.cash);
+
+      expect(store.findTable(table.id)!.status, TableStatus.needsClean);
+      final paid = store.orders.firstWhere((o) => o.id == order.id);
+      expect(paid.paymentStatus, PaymentStatus.paid);
+      expect(cust.points, pointsBefore + (paid.total / 10000).floor());
+    });
+
+    test('cancelOrder: bàn trở về trống', () {
+      final cashier = _cashier(store)!;
+      final table = store.tables.first;
+      final item = OrderItem(
+        id: 'it4',
+        productId: store.products.first.id,
+        productName: store.products.first.name,
+        size: DrinkSize.m,
+        unitPrice: 10000,
+        quantity: 1,
+      );
+      final order = store.createOrder(
+        cashier: cashier,
+        items: [item],
+        orderType: OrderType.dineIn,
+        tableId: table.id,
+      );
+      expect(store.findTable(table.id)!.status, TableStatus.serving);
+      store.cancelOrder(order.id);
+      expect(store.findTable(table.id)!.status, TableStatus.empty);
+      expect(
+        store.orders.firstWhere((o) => o.id == order.id).orderStatus,
+        OrderStatus.cancelled,
+      );
+    });
+  });
+
+  group('Thông minh', () {
+    test('suggestRestock gồm nguyên liệu dưới ngưỡng', () {
+      final low = store.ingredients.firstWhere((i) => i.isLow);
+      expect(store.suggestRestock().any((e) => e.key.id == low.id), isTrue);
+    });
+  });
+
+  group('Persistence', () {
+    test('StoreCodec round-trip giữ nguyên dữ liệu', () {
+      final s2 = DataStore();
+      final ok = StoreCodec.decode(s2, StoreCodec.encode(store));
+      expect(ok, isTrue);
+      expect(s2.products.length, store.products.length);
+      expect(s2.orders.length, store.orders.length);
+      expect(s2.ingredients.length, store.ingredients.length);
+      expect(s2.orderSeq, store.orderSeq);
+
+      // Một đơn cụ thể khôi phục đúng
+      final order = store.orders.first;
+      final restored = s2.orders.firstWhere((o) => o.id == order.id);
+      expect(restored.orderCode, order.orderCode);
+      expect(restored.total, order.total);
+      expect(restored.items.length, order.items.length);
+      expect(restored.items.first.size, order.items.first.size);
+    });
+
+    test('decode dữ liệu rác trả về false không crash', () {
+      final s2 = DataStore();
+      expect(StoreCodec.decode(s2, 'khong-phai-json'), isFalse);
+      expect(s2.products, isEmpty);
+    });
+  });
+}

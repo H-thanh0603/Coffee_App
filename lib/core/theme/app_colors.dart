@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
-/// Bảng màu chủ đạo SmartCafe - tông nâu cafe / kem / cam ấm
+/// Bảng màu chủ đạo SmartCafe - tông nâu cafe / kem / cam ấm.
+/// Màu "bề mặt" (background/surface/cardBg/text/border) tự động đổi theo
+/// [dark] (light/dark mode). Màu brand/status giữ nguyên ở cả 2 theme.
 class AppColors {
   AppColors._();
+
+  /// Bật dark palette. Được set bởi ThemeProvider trước khi build UI.
+  static bool dark = false;
 
   // Primary - Nâu cafe đậm
   static const Color primary = Color(0xFF6F4E37);
@@ -16,15 +21,15 @@ class AppColors {
   // Accent - Cam nhạt
   static const Color accent = Color(0xFFF59E0B);
 
-  // Background - Kem
-  static const Color background = Color(0xFFFAF6F1);
-  static const Color surface = Color(0xFFFFFFFF);
-  static const Color cardBg = Color(0xFFFFFBF6);
+  // Background - Kem (light) / Nâu than (dark)
+  static Color get background => dark ? const Color(0xFF17110C) : const Color(0xFFFAF6F1);
+  static Color get surface => dark ? const Color(0xFF211A13) : const Color(0xFFFFFFFF);
+  static Color get cardBg => dark ? const Color(0xFF2A2119) : const Color(0xFFFFFBF6);
 
   // Text
-  static const Color textPrimary = Color(0xFF2C1810);
-  static const Color textSecondary = Color(0xFF6B5447);
-  static const Color textHint = Color(0xFF9C8676);
+  static Color get textPrimary => dark ? const Color(0xFFF3E9DF) : const Color(0xFF2C1810);
+  static Color get textSecondary => dark ? const Color(0xFFC4AE9C) : const Color(0xFF6B5447);
+  static Color get textHint => dark ? const Color(0xFF8A7563) : const Color(0xFF9C8676);
 
   // Status
   static const Color success = Color(0xFF22C55E);
@@ -48,6 +53,6 @@ class AppColors {
   static const Color tableNeedsClean = Color(0xFFEF4444);
 
   // Border
-  static const Color border = Color(0xFFE7DDD0);
-  static const Color divider = Color(0xFFEFE6D9);
+  static Color get border => dark ? const Color(0xFF4A3B2E) : const Color(0xFFE7DDD0);
+  static Color get divider => dark ? const Color(0xFF3A2E24) : const Color(0xFFEFE6D9);
 }

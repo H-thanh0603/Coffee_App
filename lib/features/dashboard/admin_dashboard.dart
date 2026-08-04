@@ -54,7 +54,7 @@ class AdminDashboard extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const Text('Tổng quan hôm nay',
+            Text('Tổng quan hôm nay',
                 style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
             const SizedBox(height: 8),
             GridView.count(
@@ -201,7 +201,7 @@ class AdminDashboard extends StatelessWidget {
                         Text(title, style: TextStyle(fontWeight: FontWeight.w600, color: color)),
                         if (subtitle != null) ...[
                           const SizedBox(height: 2),
-                          Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                          Text(subtitle, style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                         ],
                       ],
                     ),

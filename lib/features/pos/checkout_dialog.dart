@@ -65,7 +65,7 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                     child: const Center(child: Text('🔲', style: TextStyle(fontSize: 80))),
                   ),
                   const SizedBox(height: 8),
-                  const Text('QR Banking demo', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                  Text('QR Banking demo', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                 ]),
               ),
             ],

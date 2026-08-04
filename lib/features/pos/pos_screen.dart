@@ -30,7 +30,9 @@ class _PosScreenState extends State<PosScreen> {
       if (p.hidden) return false;
       if (_selectedCatId != null && p.categoryId != _selectedCatId) return false;
       if (_query.isNotEmpty &&
-          !p.name.toLowerCase().contains(_query.toLowerCase())) return false;
+          !p.name.toLowerCase().contains(_query.toLowerCase())) {
+        return false;
+      }
       return true;
     }).toList();
 

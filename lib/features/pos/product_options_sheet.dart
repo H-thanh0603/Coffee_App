@@ -54,7 +54,7 @@ class _ProductOptionsSheetState extends State<ProductOptionsSheet> {
       minChildSize: 0.5,
       expand: false,
       builder: (_, scrollCtrl) => Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.background,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
@@ -80,7 +80,7 @@ class _ProductOptionsSheetState extends State<ProductOptionsSheet> {
                           Text(p.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                           if (p.description.isNotEmpty)
                             Padding(padding: const EdgeInsets.only(top: 4),
-                              child: Text(p.description, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary))),
+                              child: Text(p.description, style: TextStyle(fontSize: 12, color: AppColors.textSecondary))),
                           const SizedBox(height: 6),
                           Text(Fmt.money(p.basePrice),
                               style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700)),
@@ -163,7 +163,7 @@ class _ProductOptionsSheetState extends State<ProductOptionsSheet> {
   Widget _bottomBar({required double unit, required double total}) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.border)),
       ),

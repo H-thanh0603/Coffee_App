@@ -89,7 +89,7 @@ class _TableCard extends StatelessWidget {
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _color)),
           const SizedBox(height: 2),
           Text(table.capacity.toString() + ' chỗ',
-              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
           if (order != null) Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text(order.orderCode,

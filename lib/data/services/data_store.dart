@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/constants/enums.dart';
@@ -25,6 +28,7 @@ import '../seed/seed_tables.dart';
 import '../seed/seed_toppings.dart';
 import '../seed/seed_users.dart';
 import '../seed/seed_vouchers.dart';
+import 'persistence.dart';
 
 /// In-memory data store - đóng vai trò mô phỏng Firestore.
 /// Tất cả các operation đều là realtime nhờ ChangeNotifier.
@@ -42,9 +46,26 @@ class DataStore extends ChangeNotifier {
   final List<StockTransaction> stockTxs = [];
   final List<AppNotification> notifications = [];
 
-  int _orderSeq = 0;
+  static const String storageKey = 'smartcafe_data_v1';
+  SharedPreferences? _prefs;
+
+  /// Bộ đếm dùng để sinh mã đơn — cần lưu cùng state để không trùng mã.
+  int orderSeq = 0;
 
   Future<void> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    final raw = prefs.getString(storageKey);
+    // Có dữ liệu đã lưu -> khôi phục thay vì seed lại
+    if (raw != null && raw.isNotEmpty && StoreCodec.decode(this, raw)) {
+      return;
+    }
+    _seed();
+    await _persist();
+  }
+
+  /// Seed dữ liệu mẫu khi chưa có dữ liệu lưu trước đó.
+  void _seed() {
     users.addAll(seedUsers());
     categories.addAll(seedCategories());
     toppings.addAll(seedToppings());
@@ -55,6 +76,23 @@ class DataStore extends ChangeNotifier {
     recipes.addAll(seedRecipes());
     vouchers.addAll(seedVouchers());
     _seedSampleOrders();
+  }
+
+  /// Lưu toàn bộ state xuống SharedPreferences.
+  Future<void> _persist() async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    try {
+      await prefs.setString(storageKey, StoreCodec.encode(this));
+    } catch (_) {
+      // Persistence là phụ trợ - fail im lặng không làm hỏng app
+    }
+  }
+
+  @override
+  void notifyListeners() {
+    super.notifyListeners();
+    unawaited(_persist());
   }
 
   // ===== USER =====
@@ -290,8 +328,8 @@ class DataStore extends ChangeNotifier {
     Voucher? voucher,
     String note = '',
   }) {
-    _orderSeq += 1;
-    final code = Fmt.orderCode(_orderSeq);
+    orderSeq += 1;
+    final code = Fmt.orderCode(orderSeq);
     final tbl = tableId != null ? findTable(tableId) : null;
     final cust = customerId != null ? findCustomer(customerId) : null;
     final subtotal = items.fold<double>(0, (s, e) => s + e.totalPrice);
@@ -603,6 +641,6 @@ class DataStore extends ChangeNotifier {
         cust.addOrder(order.total);
       }
     }
-    _orderSeq = seq + 100;
+    orderSeq = seq + 100;
   }
 }

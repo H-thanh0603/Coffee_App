@@ -124,7 +124,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
           const SizedBox(height: 8),
           if (children.isEmpty)
-            const Text('Không có dữ liệu', style: TextStyle(color: AppColors.textSecondary))
+            Text('Không có dữ liệu', style: TextStyle(color: AppColors.textSecondary))
           else
             ...children,
         ],

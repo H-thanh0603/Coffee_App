@@ -78,10 +78,10 @@ class OrderDetailScreen extends StatelessWidget {
                   Text(it.quantity.toString() + 'x ' + it.productName + ' (' + it.size.code + ')',
                       style: const TextStyle(fontWeight: FontWeight.w600)),
                   Text('Đường ' + it.sugar.label + ' • ' + it.ice.label,
-                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                   if (it.toppingNames.isNotEmpty)
                     Text('+ ' + it.toppingNames.join(', '),
-                        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                        style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                 ])),
                 Text(Fmt.money(it.totalPrice), style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.primary)),
               ]),
@@ -108,7 +108,7 @@ class OrderDetailScreen extends StatelessWidget {
   Widget _row(String label, String value) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
         child: Row(children: [
-          SizedBox(width: 100, child: Text(label, style: const TextStyle(color: AppColors.textSecondary))),
+          SizedBox(width: 100, child: Text(label, style: TextStyle(color: AppColors.textSecondary))),
           Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600))),
         ]),
       );

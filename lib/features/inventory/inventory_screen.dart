@@ -105,8 +105,11 @@ class _IngTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final pct = ing.minStock > 0 ? (ing.currentStock / (ing.minStock * 2)).clamp(0.0, 1.0) : 1.0;
     Color color = AppColors.success;
-    if (ing.isCritical) color = AppColors.danger;
-    else if (ing.isLow) color = AppColors.warning;
+    if (ing.isCritical) {
+      color = AppColors.danger;
+    } else if (ing.isLow) {
+      color = AppColors.warning;
+    }
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -124,7 +127,7 @@ class _IngTile extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.w800, color: color, fontSize: 16)),
             const SizedBox(width: 6),
             Text('/ tối thiểu ' + ing.minStock.toStringAsFixed(0) + ' ' + ing.unit,
-                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
             const Spacer(),
             TextButton.icon(
               onPressed: () => _showInOut(context, store, ing, isIn: true),

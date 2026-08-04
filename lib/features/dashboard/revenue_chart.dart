@@ -41,7 +41,7 @@ class RevenueChart extends StatelessWidget {
             drawVerticalLine: false,
             horizontalInterval: maxY / 4,
             getDrawingHorizontalLine: (_) =>
-                const FlLine(color: AppColors.divider, strokeWidth: 1),
+                FlLine(color: AppColors.divider, strokeWidth: 1),
           ),
           borderData: FlBorderData(show: false),
           titlesData: FlTitlesData(
@@ -53,7 +53,7 @@ class RevenueChart extends StatelessWidget {
                   if (v == 0) return const SizedBox();
                   return Text(
                     (v / 1000).toStringAsFixed(0) + 'k',
-                    style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                    style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
                   );
                 },
                 interval: maxY / 4,
@@ -67,7 +67,7 @@ class RevenueChart extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     data[v.toInt()].key,
-                    style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                    style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
                   ),
                 ),
               ),

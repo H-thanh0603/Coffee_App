@@ -67,7 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 16),
               const Text('SmartCafe',
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-              const Text('Đăng nhập để tiếp tục',
+              Text('Đăng nhập để tiếp tục',
                   style: TextStyle(color: AppColors.textSecondary)),
               const SizedBox(height: 28),
               TextField(
@@ -154,11 +154,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    Text(email, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    Text(email, style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                   ],
                 ),
               ),
-              const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.textSecondary),
+              Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.textSecondary),
             ],
           ),
         ),

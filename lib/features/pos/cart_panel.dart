@@ -23,7 +23,7 @@ class CartPanel extends StatelessWidget {
       minChildSize: 0.5,
       expand: false,
       builder: (_, scrollCtrl) => Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: AppColors.background,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
@@ -328,11 +328,11 @@ class _CartItemTile extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w600)),
               Text(
                 'Size ' + item.size.code + ' • Đường ' + item.sugar.label + ' • ' + item.ice.label,
-                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
               ),
               if ((item.toppingNames as List).isNotEmpty)
                 Text('+ ' + (item.toppingNames as List).join(', '),
-                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(Fmt.money(item.totalPrice),
@@ -360,7 +360,7 @@ class _SummaryBar extends StatelessWidget {
     final cart = context.watch<CartProvider>();
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
