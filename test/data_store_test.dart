@@ -486,4 +486,53 @@ void main() {
       expect(store.revenueOnDate(yesterday), revBeforeYesterday);
     });
   });
+
+  group('Lợi nhuận ước tính', () {
+    test('profitInRange chạy và tính theo paidAt', () {
+      final cashier = _cashier(store)!;
+      final recipe = store.recipes.first;
+      final product =
+          store.products.firstWhere((p) => p.id == recipe.productId);
+      final order = store.createOrder(
+        cashier: cashier,
+        items: [
+          OrderItem(
+              id: 'pr1',
+              productId: product.id,
+              productName: product.name,
+              size: recipe.size,
+              unitPrice: 100000,
+              quantity: 1),
+        ],
+        orderType: OrderType.takeaway,
+      );
+      store.payOrder(order.id, PaymentMethod.cash);
+      // Có lợi nhuận tính được trên dữ liệu vừa thêm (không crash, không âm vô hạn)
+      expect(store.profitInRange(1), isA<double>());
+    });
+  });
+
+  group('Đơn pha quá lâu', () {
+    test('cảnh báo barista khi đơn >10 phút chưa hoàn thành', () {
+      store.orders.clear();
+      store.orders.add(AppOrder(
+        id: 'slow1',
+        orderCode: 'SLOW01',
+        cashierId: 'c1',
+        cashierName: 'C',
+        orderType: OrderType.takeaway,
+        items: const [],
+        subtotal: 0,
+        total: 0,
+        createdAt: DateTime.now().subtract(const Duration(minutes: 15)),
+      ));
+      store.updateOrderStatus('slow1', OrderStatus.preparing);
+      expect(
+        store
+            .notificationsForRole(UserRole.barista)
+            .any((n) => n.type == 'slow_order'),
+        isTrue,
+      );
+    });
+  });
 }

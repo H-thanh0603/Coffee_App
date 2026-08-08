@@ -59,10 +59,12 @@ class DataStore extends ChangeNotifier {
     // Có dữ liệu đã lưu -> khôi phục thay vì seed lại
     if (raw != null && raw.isNotEmpty && StoreCodec.decode(this, raw)) {
       _checkVoucherAlerts();
+      _checkSlowOrderAlerts();
       return;
     }
     _seed();
     _checkVoucherAlerts();
+    _checkSlowOrderAlerts();
     await _persist();
   }
 
@@ -169,6 +171,16 @@ class DataStore extends ChangeNotifier {
       if (r.productId == productId && r.size == size) return r;
     }
     return null;
+  }
+
+  /// Recipe cho món + size, fallback về recipe đầu tiên của món nếu size đó
+  /// chưa có (mặc định size M). Dùng chung cho trừ kho và tính giá vốn.
+  Recipe? _recipeFor(String productId, DrinkSize size) {
+    return findRecipe(productId, size) ??
+        recipes.cast<Recipe?>().firstWhere(
+              (r) => r?.productId == productId,
+              orElse: () => null,
+            );
   }
 
   void addRecipe(Recipe r) {
@@ -324,11 +336,7 @@ class DataStore extends ChangeNotifier {
   List<MapEntry<Ingredient, double>> missingIngredients(List<OrderItem> items) {
     final need = <String, double>{};
     for (final item in items) {
-      final r = findRecipe(item.productId, item.size) ??
-          recipes.cast<Recipe?>().firstWhere(
-                (r) => r?.productId == item.productId,
-                orElse: () => null,
-              );
+      final r = _recipeFor(item.productId, item.size);
       if (r == null) continue;
       for (final ri in r.items) {
         need[ri.ingredientId] =
@@ -348,16 +356,7 @@ class DataStore extends ChangeNotifier {
   /// Trừ kho theo công thức khi đơn được xác nhận pha chế
   void consumeRecipe(AppOrder order) {
     for (final item in order.items) {
-      final recipe = recipes.cast<Recipe?>().firstWhere(
-            (r) => r?.productId == item.productId && r?.size == item.size,
-            orElse: () => null,
-          );
-      // fallback: tìm recipe size M nếu size khác không có
-      final r = recipe ??
-          recipes.cast<Recipe?>().firstWhere(
-                (r) => r?.productId == item.productId,
-                orElse: () => null,
-              );
+      final r = _recipeFor(item.productId, item.size);
       if (r == null) continue;
       for (final ri in r.items) {
         final ing = findIngredient(ri.ingredientId);
@@ -494,6 +493,7 @@ class DataStore extends ChangeNotifier {
     if (status == OrderStatus.ready || status == OrderStatus.served) {
       o.completedAt ??= DateTime.now();
     }
+    _checkSlowOrderAlerts();
     notifyListeners();
   }
 
@@ -688,6 +688,29 @@ class DataStore extends ChangeNotifier {
     }
   }
 
+  /// Cảnh báo đơn quá 10 phút ở pending/preparing chưa hoàn thành.
+  void _checkSlowOrderAlerts() {
+    for (final o in orders.where((o) =>
+        (o.orderStatus == OrderStatus.pending ||
+            o.orderStatus == OrderStatus.confirmed ||
+            o.orderStatus == OrderStatus.preparing) &&
+        o.age.inMinutes > 10)) {
+      final exists = notifications.any(
+          (n) => n.type == 'slow_order' && n.message.contains(o.orderCode));
+      if (!exists) {
+        _addNotification(
+          title: 'Đơn pha chế quá lâu',
+          message: o.orderCode +
+              ' quá ' +
+              o.age.inMinutes.toString() +
+              ' phút chưa hoàn thành',
+          type: 'slow_order',
+          role: UserRole.barista,
+        );
+      }
+    }
+  }
+
   /// Cảnh báo voucher sắp hết hạn (còn <= 3 ngày).
   void _checkVoucherAlerts() {
     final now = DateTime.now();
@@ -753,23 +776,32 @@ class DataStore extends ChangeNotifier {
     return result;
   }
 
-  /// Lợi nhuận ước tính: doanh thu - giá vốn (theo công thức pha chế).
-  double profitInRange(int days) {
-    final since = DateTime.now().subtract(Duration(days: days));
-    double profit = 0;
-    for (final o in paidOrders.where((o) => o.createdAt.isAfter(since))) {
-      for (final it in o.items) {
-        final r = findRecipe(it.productId, it.size);
-        if (r == null) continue;
-        double cost = 0;
+  /// Giá vốn của 1 order (tiền nguyên liệu theo công thức + topping).
+  double _costOfOrder(AppOrder o) {
+    double cost = 0;
+    for (final it in o.items) {
+      final r = _recipeFor(it.productId, it.size);
+      if (r != null) {
         for (final ri in r.items) {
           final ing = findIngredient(ri.ingredientId);
-          cost += (ing?.costPerUnit ?? 0) * ri.quantity;
+          cost += (ing?.costPerUnit ?? 0) * ri.quantity * it.quantity;
         }
-        profit += it.totalPrice - cost * it.quantity;
       }
+      // Topping không nằm trong công thức -> tính giá vốn topping = 60% giá bán
+      cost += it.toppingsPrice * it.quantity * 0.6;
     }
-    return profit;
+    return cost;
+  }
+
+  /// Lợi nhuận ước tính: doanh thu thực thu - giá vốn (theo paidAt).
+  double profitInRange(int days) {
+    final since = DateTime.now().subtract(Duration(days: days));
+    double revenue = 0, cost = 0;
+    for (final o in paidOrders.where((o) => o.paidAt.isAfter(since))) {
+      revenue += o.total; // tổng đã trừ voucher/điểm
+      cost += _costOfOrder(o);
+    }
+    return revenue - cost;
   }
 
   /// Top sản phẩm bán chạy theo số ly trong 7 ngày
