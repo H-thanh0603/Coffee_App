@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../routes/role_router.dart';
 import 'auth_provider.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -55,7 +56,8 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               const SizedBox(height: 16),
               Container(
-                width: 88, height: 88,
+                width: 88,
+                height: 88,
                 decoration: BoxDecoration(
                   color: AppColors.primary,
                   borderRadius: BorderRadius.circular(24),
@@ -88,6 +90,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 obscureText: true,
               ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const ForgotPasswordScreen()),
+                  ),
+                  child: const Text('Quên mật khẩu?'),
+                ),
+              ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 Container(
@@ -97,9 +110,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(children: [
-                    const Icon(Icons.error_outline, color: AppColors.danger, size: 18),
+                    const Icon(Icons.error_outline,
+                        color: AppColors.danger, size: 18),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(_error!, style: const TextStyle(color: AppColors.danger))),
+                    Expanded(
+                        child: Text(_error!,
+                            style: const TextStyle(color: AppColors.danger))),
                   ]),
                 ),
               ],
@@ -110,8 +126,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: _loading ? null : _submit,
                   child: _loading
                       ? const SizedBox(
-                          height: 20, width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
                       : const Text('Đăng nhập', style: TextStyle(fontSize: 16)),
                 ),
               ),
@@ -153,12 +171,16 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    Text(email, style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    Text(label,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(email,
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary)),
                   ],
                 ),
               ),
-              Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.textSecondary),
+              Icon(Icons.arrow_forward_ios,
+                  size: 14, color: AppColors.textSecondary),
             ],
           ),
         ),

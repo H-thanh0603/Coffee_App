@@ -233,6 +233,15 @@ void main() {
       final low = store.ingredients.firstWhere((i) => i.isLow);
       expect(store.suggestRestock().any((e) => e.key.id == low.id), isTrue);
     });
+
+    test('slowProducts chỉ gồm món đã bán dưới ngưỡng, không kể món 0 ly', () {
+      // Mọi sản phẩm seed đều có trong _seedSampleOrders -> count > 0 cho mọi món
+      // bán được. Món chưa từng bán (count = 0) phải bị loại ra khỏi danh sách.
+      final slow = store.slowProducts(days: 7);
+      expect(slow.every((e) => e.value > 0 && e.value < 5), isTrue);
+      // Đúng ngưỡng: không được có món bán 0 ly
+      expect(slow.any((e) => e.value == 0), isFalse);
+    });
   });
 
   group('Persistence', () {
@@ -386,6 +395,95 @@ void main() {
       store.payOrder(order.id, PaymentMethod.cash);
       final earned = (order.total / 10000).floor();
       expect(cust.points, before + earned - ptsUsed);
+    });
+  });
+
+  group('Kho không đủ', () {
+    test('missingIngredients báo thiếu khi set kho về 0', () {
+      final recipe = store.recipes.first;
+      final ing = store.findIngredient(recipe.items.first.ingredientId)!;
+      final product =
+          store.products.firstWhere((p) => p.id == recipe.productId);
+      ing.currentStock = 0;
+      final item = OrderItem(
+        id: 'mis1',
+        productId: product.id,
+        productName: product.name,
+        size: recipe.size,
+        unitPrice: 10000,
+        quantity: 1,
+      );
+      final missing = store.missingIngredients([item]);
+      expect(missing.any((e) => e.key.id == ing.id), isTrue);
+    });
+
+    test('missingIngredients rỗng khi kho đủ', () {
+      final recipe = store.recipes.first;
+      final product =
+          store.products.firstWhere((p) => p.id == recipe.productId);
+      final item = OrderItem(
+        id: 'ok1',
+        productId: product.id,
+        productName: product.name,
+        size: recipe.size,
+        unitPrice: 10000,
+        quantity: 1,
+      );
+      expect(store.missingIngredients([item]), isEmpty);
+    });
+  });
+
+  group('Doanh thu theo thời điểm thanh toán', () {
+    test('revenueOnDate dùng completedAt thay vì createdAt', () {
+      final cashier = _cashier(store)!;
+      final today = DateTime.now();
+      final revBeforeToday = store.revenueOnDate(today);
+      final revBeforeYesterday =
+          store.revenueOnDate(DateTime.now().subtract(const Duration(days: 1)));
+      final base = store.createOrder(
+        cashier: cashier,
+        items: [
+          OrderItem(
+            id: 'dt1',
+            productId: store.products.first.id,
+            productName: store.products.first.name,
+            size: DrinkSize.m,
+            unitPrice: 100000,
+            quantity: 1,
+          ),
+        ],
+        orderType: OrderType.takeaway,
+      );
+      // Ghi đè: đơn tạo hôm qua, hoàn tất (paid) hôm nay
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      final todayNoon = DateTime(
+        DateTime.now().year,
+        DateTime.now().month,
+        DateTime.now().day,
+        12,
+      );
+      store.orders.removeWhere((o) => o.id == base.id);
+      store.orders.add(AppOrder(
+        id: base.id,
+        orderCode: base.orderCode,
+        cashierId: base.cashierId,
+        cashierName: base.cashierName,
+        orderType: base.orderType,
+        items: base.items,
+        subtotal: base.subtotal,
+        total: base.total,
+        paymentStatus: PaymentStatus.paid,
+        paymentMethod: PaymentMethod.cash,
+        orderStatus: OrderStatus.paid,
+        createdAt: yesterday,
+        updatedAt: todayNoon,
+        completedAt: todayNoon,
+      ));
+
+      // Đã thanh toán hôm nay -> doanh thu hôm nay tăng đúng 100.000
+      expect(store.revenueOnDate(DateTime.now()), revBeforeToday + 100000);
+      // KHÔNG tính vào hôm qua dù createdAt rơi vào hôm qua
+      expect(store.revenueOnDate(yesterday), revBeforeYesterday);
     });
   });
 }

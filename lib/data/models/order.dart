@@ -57,6 +57,10 @@ class AppOrder {
 
   Duration get age => DateTime.now().difference(createdAt);
 
+  /// Thời điểm xem là "đã thu tiền" cho báo cáo doanh thu.
+  /// Ưu tiên completedAt (lúc hoàn tất/thanh toán), fallback updatedAt.
+  DateTime get paidAt => completedAt ?? updatedAt;
+
   AppOrder copyWith({
     OrderStatus? orderStatus,
     PaymentStatus? paymentStatus,

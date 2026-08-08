@@ -487,9 +487,27 @@ class _SummaryBar extends StatelessWidget {
           const SizedBox(height: 12),
           ElevatedButton.icon(
             onPressed: () {
+              final store = context.read<DataStore>();
               if (cart.orderType == OrderType.dineIn && cart.tableId == null) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Vui lòng chọn bàn')),
+                );
+                return;
+              }
+              final missing = store.missingIngredients(cart.items);
+              if (missing.isNotEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Thiếu nguyên liệu: ' +
+                        missing
+                            .map((e) =>
+                                e.key.name +
+                                ' (thiếu ' +
+                                Fmt.money(e.value) +
+                                e.key.unit +
+                                ')')
+                            .join(', ')),
+                  ),
                 );
                 return;
               }

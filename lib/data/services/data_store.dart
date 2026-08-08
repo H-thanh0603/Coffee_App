@@ -319,6 +319,32 @@ class DataStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Trả về danh sách nguyên liệu không đủ để làm các [items].
+  /// Rỗng = đủ nguyên liệu. Mỗi entry: (ingredient, thiếu bao nhiêu).
+  List<MapEntry<Ingredient, double>> missingIngredients(List<OrderItem> items) {
+    final need = <String, double>{};
+    for (final item in items) {
+      final r = findRecipe(item.productId, item.size) ??
+          recipes.cast<Recipe?>().firstWhere(
+                (r) => r?.productId == item.productId,
+                orElse: () => null,
+              );
+      if (r == null) continue;
+      for (final ri in r.items) {
+        need[ri.ingredientId] =
+            (need[ri.ingredientId] ?? 0) + ri.quantity * item.quantity;
+      }
+    }
+    return need.entries
+        .map((e) {
+          final ing = findIngredient(e.key);
+          if (ing == null || ing.currentStock >= e.value) return null;
+          return MapEntry(ing, e.value - ing.currentStock);
+        })
+        .whereType<MapEntry<Ingredient, double>>()
+        .toList();
+  }
+
   /// Trừ kho theo công thức khi đơn được xác nhận pha chế
   void consumeRecipe(AppOrder order) {
     for (final item in order.items) {
@@ -352,6 +378,15 @@ class DataStore extends ChangeNotifier {
       }
     }
     _checkLowStockAlerts();
+    final missing = missingIngredients(order.items);
+    if (missing.isNotEmpty) {
+      _addNotification(
+        title: 'Thiếu nguyên liệu',
+        message: missing.map((e) => e.key.name).take(3).join(', '),
+        type: 'stock_shortage',
+        role: UserRole.admin,
+      );
+    }
     notifyListeners();
   }
 
@@ -678,16 +713,15 @@ class DataStore extends ChangeNotifier {
   List<AppOrder> get paidOrders =>
       orders.where((o) => o.paymentStatus == PaymentStatus.paid).toList();
 
-  List<AppOrder> ordersOnDate(DateTime date) {
-    return paidOrders.where((o) {
-      return o.createdAt.year == date.year &&
-          o.createdAt.month == date.month &&
-          o.createdAt.day == date.day;
-    }).toList();
-  }
-
   double revenueOnDate(DateTime date) =>
       ordersOnDate(date).fold<double>(0, (s, o) => s + o.total);
+
+  List<AppOrder> ordersOnDate(DateTime date) {
+    return paidOrders.where((o) {
+      final t = o.paidAt;
+      return t.year == date.year && t.month == date.month && t.day == date.day;
+    }).toList();
+  }
 
   double get revenueToday => revenueOnDate(DateTime.now());
   double get revenueYesterday =>
@@ -742,7 +776,7 @@ class DataStore extends ChangeNotifier {
   List<MapEntry<Product, int>> topProducts({int days = 7, int limit = 5}) {
     final since = DateTime.now().subtract(Duration(days: days));
     final counts = <String, int>{};
-    for (final o in paidOrders.where((o) => o.createdAt.isAfter(since))) {
+    for (final o in paidOrders.where((o) => o.paidAt.isAfter(since))) {
       for (final i in o.items) {
         counts[i.productId] = (counts[i.productId] ?? 0) + i.quantity;
       }
@@ -759,21 +793,19 @@ class DataStore extends ChangeNotifier {
     return result;
   }
 
-  /// Sản phẩm bán chậm trong tuần
+  /// Sản phẩm bán chậm trong tuần — chỉ tính món ĐÃ bán (count > 0),
+  /// loại món không bán ly nào (không phải "bán chậm", chỉ là không bán).
   List<MapEntry<Product, int>> slowProducts({int days = 7, int threshold = 5}) {
     final since = DateTime.now().subtract(Duration(days: days));
     final counts = <String, int>{};
-    for (final p in products) {
-      counts[p.id] = 0;
-    }
-    for (final o in paidOrders.where((o) => o.createdAt.isAfter(since))) {
+    for (final o in paidOrders.where((o) => o.paidAt.isAfter(since))) {
       for (final i in o.items) {
         counts[i.productId] = (counts[i.productId] ?? 0) + i.quantity;
       }
     }
     final result = <MapEntry<Product, int>>[];
     counts.forEach((pid, count) {
-      if (count < threshold) {
+      if (count > 0 && count < threshold) {
         final p = products
             .cast<Product?>()
             .firstWhere((x) => x?.id == pid, orElse: () => null);
