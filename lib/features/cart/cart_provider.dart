@@ -29,7 +29,8 @@ class CartProvider extends ChangeNotifier {
 
   int get itemCount => _items.fold<int>(0, (s, e) => s + e.quantity);
   double get subtotal => _items.fold<double>(0, (s, e) => s + e.totalPrice);
-  double get discount => _voucher?.calcDiscount(subtotal) ?? 0;
+  double get discount =>
+      (_voucher?.isAvailable ?? false) ? _voucher!.calcDiscount(subtotal) : 0;
 
   /// Số điểm khách dùng (bội số của 100).
   int get pointsUsed => _pointsUsed;
@@ -41,6 +42,9 @@ class CartProvider extends ChangeNotifier {
     final d = subtotal - discount - pointsDiscount;
     return d.clamp(0.0, double.infinity).toDouble();
   }
+
+  /// Giảm giá khả dụng (voucher hết hạn/hết lượt thì không tính vào tổng).
+  double get availableDiscount => discount + pointsDiscount;
 
   /// Bật/tắt dùng điểm giảm giá. [maxRedeemable] = số điểm khách đang có.
   void setUsePoints({required int maxRedeemable, required bool value}) {

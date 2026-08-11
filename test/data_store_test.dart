@@ -172,6 +172,143 @@ void main() {
           closeTo(stockBefore - used, 0.001));
     });
 
+    test('payOrder gọi 2 lần: không cộng điểm / không đổi bàn lần 2', () {
+      final cashier = _cashier(store)!;
+      final cust = store.customers.first;
+      final table = store.tables.first;
+      final pointsBefore = cust.points;
+
+      final item = OrderItem(
+        id: 'it-dup',
+        productId: store.products.first.id,
+        productName: store.products.first.name,
+        size: DrinkSize.m,
+        unitPrice: 10000,
+        quantity: 1,
+      );
+      final order = store.createOrder(
+        cashier: cashier,
+        items: [item],
+        orderType: OrderType.dineIn,
+        tableId: table.id,
+        customerId: cust.id,
+      );
+      store.payOrder(order.id, PaymentMethod.cash);
+      final paidAt =
+          store.orders.firstWhere((o) => o.id == order.id).completedAt;
+      store.payOrder(order.id, PaymentMethod.transfer);
+
+      final paid = store.orders.firstWhere((o) => o.id == order.id);
+      expect(
+          paid.paymentMethod, PaymentMethod.cash); // giữ phương thức đầu tiên
+      expect(paid.paymentStatus, PaymentStatus.paid); // không reset về unpaid
+      expect(paid.completedAt, paidAt); // không cập nhật lần 2
+      expect(cust.points,
+          pointsBefore + (paid.total / 10000).floor()); // cộng đúng 1 lần
+    });
+
+    test('payOrder set completedAt -> paidAt = thời điểm thu tiền cố định', () {
+      final cashier = _cashier(store)!;
+      final item = OrderItem(
+          id: 'it-paidat',
+          productId: store.products.first.id,
+          productName: store.products.first.name,
+          size: DrinkSize.m,
+          unitPrice: 10000,
+          quantity: 1);
+      final order = store.createOrder(
+          cashier: cashier, items: [item], orderType: OrderType.takeaway);
+      expect(order.completedAt, isNull);
+      store.payOrder(order.id, PaymentMethod.cash);
+      final paid = store.orders.firstWhere((o) => o.id == order.id);
+      expect(paid.completedAt, isNotNull);
+      expect(paid.paidAt, paid.completedAt);
+      // Cập nhật trạng thái sau khi thanh toán không làm đổi ngày doanh thu
+      store.updateOrderStatus(order.id, OrderStatus.served);
+      final after = store.orders.firstWhere((o) => o.id == order.id);
+      expect(after.paidAt, paid.completedAt);
+    });
+
+    test('updateOrderStatus idempotent: bấm đúp preparing không trừ kho 2 lần',
+        () {
+      final cashier = _cashier(store)!;
+      final recipe = store.recipes.first;
+      final product =
+          store.products.firstWhere((p) => p.id == recipe.productId);
+      final ing = store.findIngredient(recipe.items.first.ingredientId)!;
+      final stockBefore = ing.currentStock;
+
+      final item = OrderItem(
+        id: 'it-idem',
+        productId: product.id,
+        productName: product.name,
+        size: recipe.size,
+        unitPrice: 10000,
+        quantity: 1,
+      );
+      final order = store.createOrder(
+          cashier: cashier, items: [item], orderType: OrderType.takeaway);
+      store.updateOrderStatus(order.id, OrderStatus.preparing);
+      store.updateOrderStatus(order.id, OrderStatus.preparing); // bấm đúp
+
+      final used = recipe.items.first.quantity;
+      expect(
+          store.findIngredient(recipe.items.first.ingredientId)!.currentStock,
+          closeTo(stockBefore - used, 0.001));
+      expect(store.orders.firstWhere((o) => o.id == order.id).orderStatus,
+          OrderStatus.preparing);
+    });
+
+    test('không tạo được đơn mới cho bàn đang phục vụ', () {
+      final cashier = _cashier(store)!;
+      final table = store.tables.first;
+      OrderItem item() => OrderItem(
+            id: 'occ-' +
+                table.id +
+                '-' +
+                table.currentOrderId.hashCode.toString(),
+            productId: store.products.first.id,
+            productName: store.products.first.name,
+            size: DrinkSize.m,
+            unitPrice: 10000,
+            quantity: 1,
+          );
+      store.createOrder(
+          cashier: cashier,
+          items: [item()],
+          orderType: OrderType.dineIn,
+          tableId: table.id); // đơn đầu
+      expect(
+          () => store.createOrder(
+              cashier: cashier,
+              items: [item()],
+              orderType: OrderType.dineIn,
+              tableId: table.id),
+          throwsStateError);
+    });
+
+    test('voucher hết lượt dùng: không giảm giá, không tăng usedCount', () {
+      final cashier = _cashier(store)!;
+      final v = store.vouchers.first;
+      v.usedCount = v.usageLimit; // hết hạn lượt
+      final item = OrderItem(
+        id: 'it-vouch',
+        productId: store.products.first.id,
+        productName: store.products.first.name,
+        size: DrinkSize.m,
+        unitPrice: 50000,
+        quantity: 1,
+      );
+      final order = store.createOrder(
+          cashier: cashier,
+          items: [item],
+          orderType: OrderType.takeaway,
+          voucher: v);
+      expect(order.discount, 0);
+      expect(order.total, order.subtotal);
+      expect(v.usedCount, v.usageLimit); // không tăng
+    });
+
     test('payOrder: cộng điểm khách (10k=1 điểm) + bàn cần dọn', () {
       final cashier = _cashier(store)!;
       final cust = store.customers.first;
@@ -199,6 +336,35 @@ void main() {
       final paid = store.orders.firstWhere((o) => o.id == order.id);
       expect(paid.paymentStatus, PaymentStatus.paid);
       expect(cust.points, pointsBefore + (paid.total / 10000).floor());
+    });
+
+    test('cancelOrder: đơn đã thanh toán không hủy được', () {
+      final cashier = _cashier(store)!;
+      final table = store.tables.first;
+      final item = OrderItem(
+        id: 'it-cancelpaid',
+        productId: store.products.first.id,
+        productName: store.products.first.name,
+        size: DrinkSize.m,
+        unitPrice: 10000,
+        quantity: 1,
+      );
+      final order = store.createOrder(
+        cashier: cashier,
+        items: [item],
+        orderType: OrderType.dineIn,
+        tableId: table.id,
+      );
+      store.payOrder(order.id, PaymentMethod.cash);
+      store.cancelOrder(order.id);
+
+      final after = store.orders.firstWhere((o) => o.id == order.id);
+      expect(after.orderStatus, isNot(OrderStatus.cancelled));
+      expect(after.paymentStatus, PaymentStatus.paid);
+      expect(after.paymentMethod,
+          PaymentMethod.cash); // giữ nguyên data đã thanh toán
+      expect(store.findTable(table.id)!.status,
+          isNot(TableStatus.empty)); // bàn không bị trả về trống
     });
 
     test('cancelOrder: bàn trở về trống', () {

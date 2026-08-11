@@ -171,6 +171,8 @@ class _TableCard extends StatelessWidget {
                 ? const Text('Sẽ chọn sẵn bàn trong giỏ',
                     style: TextStyle(fontSize: 11))
                 : null,
+            enabled: table.status == TableStatus.empty ||
+                table.status == TableStatus.needsClean,
             onTap: () {
               final cart = ctx.read<CartProvider>();
               cart.setTable(table.id, table.tableName);

@@ -31,6 +31,9 @@ class AuthProvider extends ChangeNotifier {
   }
 
   void switchAccount(AppUser user) {
+    // Chỉ admin được chuyển đổi tài khoản (tránh staff tự tăng quyền).
+    if (_currentUser?.role != UserRole.admin) return;
+    if (!user.active) return; // không chuyển sang tài khoản bị khóa
     _currentUser = user;
     notifyListeners();
   }

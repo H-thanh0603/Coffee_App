@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/enums.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../data/models/order.dart';
 import '../../data/services/data_store.dart';
 import '../auth/auth_provider.dart';
 import '../cart/cart_provider.dart';
@@ -17,6 +18,7 @@ class CheckoutDialog extends StatefulWidget {
 
 class _CheckoutDialogState extends State<CheckoutDialog> {
   PaymentMethod _method = PaymentMethod.cash;
+  bool _submitting = false;
 
   @override
   Widget build(BuildContext context) {
@@ -91,8 +93,8 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _confirm,
-                      child: const Text('Xác nhận'),
+                      onPressed: _submitting ? null : _confirm,
+                      child: Text(_submitting ? 'Đang xử lý...' : 'Xác nhận'),
                     ),
                   ),
                 ]),
@@ -130,21 +132,31 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
       ]);
 
   void _confirm() {
+    if (_submitting) return;
+    setState(() => _submitting = true);
     final cart = context.read<CartProvider>();
     final store = context.read<DataStore>();
     final auth = context.read<AuthProvider>();
 
-    final order = store.createOrder(
-      cashier: auth.currentUser!,
-      items: List.from(cart.items),
-      orderType: cart.orderType,
-      tableId: cart.tableId,
-      customerId: cart.customerId,
-      voucher: cart.voucher,
-      pointsUsed: cart.pointsUsed,
-      pointsDiscount: cart.pointsDiscount,
-      note: cart.note,
-    );
+    AppOrder order;
+    try {
+      order = store.createOrder(
+        cashier: auth.currentUser!,
+        items: List.from(cart.items),
+        orderType: cart.orderType,
+        tableId: cart.tableId,
+        customerId: cart.customerId,
+        voucher: cart.voucher,
+        pointsUsed: cart.pointsUsed,
+        pointsDiscount: cart.pointsDiscount,
+        note: cart.note,
+      );
+    } on StateError catch (e) {
+      if (mounted) setState(() => _submitting = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+      return;
+    }
     store.payOrder(order.id, _method);
     cart.clear();
 

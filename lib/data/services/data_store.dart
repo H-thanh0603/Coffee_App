@@ -433,8 +433,20 @@ class DataStore extends ChangeNotifier {
     final code = Fmt.orderCode(orderSeq);
     final tbl = tableId != null ? findTable(tableId) : null;
     final cust = customerId != null ? findCustomer(customerId) : null;
+    // Bàn đang có đơn CHƯA THU TIỀN thì không cho tạo đơn mới (tránh đơn bị treo).
+    if (tbl != null && tbl.currentOrderId != null) {
+      final active = orders
+          .cast<AppOrder?>()
+          .firstWhere((o) => o?.id == tbl.currentOrderId, orElse: () => null);
+      if (active != null && active.paymentStatus != PaymentStatus.paid) {
+        throw StateError(
+            'Bàn ' + tbl.tableName + ' đang có đơn chưa thanh toán');
+      }
+    }
     final subtotal = items.fold<double>(0, (s, e) => s + e.totalPrice);
-    final discount = voucher?.calcDiscount(subtotal) ?? 0;
+    final discount = (voucher != null && voucher.isAvailable)
+        ? voucher.calcDiscount(subtotal)
+        : 0.0;
     final total = (subtotal - discount - pointsDiscount)
         .clamp(0.0, double.infinity)
         .toDouble();
@@ -464,7 +476,7 @@ class DataStore extends ChangeNotifier {
       tbl.status = TableStatus.serving;
       tbl.currentOrderId = order.id;
     }
-    if (voucher != null) {
+    if (voucher != null && voucher.isAvailable) {
       voucher.usedCount += 1;
     }
 
@@ -485,13 +497,13 @@ class DataStore extends ChangeNotifier {
     final i = orders.indexWhere((o) => o.id == orderId);
     if (i < 0) return;
     final o = orders[i];
+    if (o.orderStatus == status) {
+      return; // idempotent - chống bấm đúp trừ kho 2 lần
+    }
     o.orderStatus = status;
     o.updatedAt = DateTime.now();
     if (status == OrderStatus.preparing) {
       consumeRecipe(o);
-    }
-    if (status == OrderStatus.ready || status == OrderStatus.served) {
-      o.completedAt ??= DateTime.now();
     }
     _checkSlowOrderAlerts();
     notifyListeners();
@@ -501,12 +513,14 @@ class DataStore extends ChangeNotifier {
     final i = orders.indexWhere((o) => o.id == orderId);
     if (i < 0) return;
     final o = orders[i];
+    if (o.paymentStatus == PaymentStatus.paid) return; // chống thanh toán 2 lần
     final updated = o.copyWith(
       paymentStatus: PaymentStatus.paid,
       paymentMethod: method,
       orderStatus: o.orderStatus == OrderStatus.pending
           ? OrderStatus.confirmed
           : o.orderStatus,
+      completedAt: DateTime.now(), // thời điểm thu tiền, cố định cho doanh thu
     );
     orders[i] = updated;
     if (updated.tableId != null) {
@@ -625,6 +639,9 @@ class DataStore extends ChangeNotifier {
     final i = orders.indexWhere((o) => o.id == orderId);
     if (i < 0) return;
     final o = orders[i];
+    if (o.paymentStatus == PaymentStatus.paid) {
+      return; // đã thu tiền thì không hủy
+    }
     orders[i] = o.copyWith(orderStatus: OrderStatus.cancelled);
     if (o.tableId != null) {
       final tbl = findTable(o.tableId!);
