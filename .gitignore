@@ -31,3 +31,11 @@ Thumbs.db
 *.log
 coverage/
 .env
+
+# Supabase (commit config.toml + migrations + seed.sql; ignore local runtime secrets)
+supabase/.temp/
+supabase/.branches/
+supabase/.env
+
+# Claude local settings
+.claude/

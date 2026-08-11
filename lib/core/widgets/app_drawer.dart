@@ -103,8 +103,9 @@ class AppDrawer extends StatelessWidget {
             leading: const Icon(Icons.logout, color: AppColors.danger),
             title: const Text('Đăng xuất',
                 style: TextStyle(color: AppColors.danger)),
-            onTap: () {
-              auth.logout();
+            onTap: () async {
+              await auth.logout();
+              if (!context.mounted) return;
               Navigator.pop(context);
               context.go('/login');
             },

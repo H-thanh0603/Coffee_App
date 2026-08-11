@@ -22,9 +22,10 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 | UI | Material 3 + Google Fonts (Inter) + Dark/Light mode |
 | Charts | fl_chart 0.66 |
 | Data | In-memory store (mô phỏng Firestore) + persist qua shared_preferences |
+| Backend | Supabase (Auth + PostgreSQL + RLS + Realtime) — hybrid sync |
 | Utils | uuid, intl, collection |
 
-> Lưu ý: dữ liệu được giữ trong bộ nhớ qua `DataStore` (ChangeNotifier) và **tự lưu xuống SharedPreferences** sau mỗi thao tác — refresh/đóng app không mất dữ liệu. Kiến trúc sẵn sàng swap sang Firestore / REST / SQLite.
+> Lưu ý: dữ liệu được giữ trong bộ nhớ qua `DataStore` (ChangeNotifier) và **tự lưu xuống SharedPreferences** sau mỗi thao tác — refresh/đóng app không mất dữ liệu. Khi bật Supabase (`SUPABASE_ENABLED=true`), app đồng bộ hybrid: push qua outbox RPC, pull increment theo watermark. Xem [🔮 Backend (Supabase)](#-backend-supabase).
 
 ## ✨ Tính năng chính
 
@@ -260,13 +261,65 @@ App được seed sẵn:
 - **Icon**: Material Icons + emoji món/topping
 - **Dễ thao tác bằng một tay**: action buttons ở dưới, chip filter ngang
 
-## 🔮 Mở rộng
+## 🔮 Backend (Supabase)
 
-App được thiết kế để dễ thay backend thật:
+App có **backend Supabase** (auth thật + PostgreSQL + RLS + realtime), đồng bộ hybrid:
 
-1. **Firebase/Firestore**: thay `DataStore` bằng repositories gọi `cloud_firestore`. Toàn bộ provider/UI giữ nguyên.
-2. **REST API**: bổ sung `services/api_client.dart` với `dio`/`http`, repository pattern.
-3. **SQLite (offline-first)**: dùng `sqflite` + sync queue.
+- **Push**: mọi thao tác tiền/kho (tạo đơn, pha chế, thu tiền, hủy, chuyển bàn, gộp bàn, nhập/xuất kho) ghi vào **outbox** (`smartcafe_outbox_v1`) rồi replay qua **RPC** (single tx, idempotent). Offline → outbox giữ nguyên, retry khi có mạng.
+- **Pull**: khi online, kéo thay đổi từ DB (`updated_at` > watermark) gộp vào local. DB là nguồn quyền lực cho tiền/kho.
+- **RLS**: chỉ đọc qua RPC cho bảng tiền; nhân viên đọc reference data; khách hàng đọc đúng đơn/điểm của mình.
+- **Realtime**: đơn/bàn/khách/kho/voucher thay đổi ở DB → các client khác pull ngay (hội tụ).
+- **Offline**: không có Supabase hoặc mất mạng → app chạy local như cũ (dữ liệu seed + SharedPreferences).
+
+### Cài đặt backend local (Docker)
+
+```bash
+supabase start            # khởi động stack local (cổng: API 54333, DB 54330, Studio 54325)
+supabase db reset         # nếu cần chạy lại migration + seed từ đầu
+bash scripts/seed_auth.sh # tạo 5 tài khoản demo + gán role
+```
+
+Seed SQL (`supabase/seed.sql`) nạp catalog trùng id với `lib/data/seed/*.dart`.
+
+### Demo accounts (mật khẩu: `123456`)
+
+| Email | Vai trò |
+|-------|---------|
+| `admin@smartcafe.com` | Chủ quán |
+| `cashier@smartcafe.com` | Thu ngân |
+| `barista@smartcafe.com` | Pha chế |
+| `waiter@smartcafe.com` | Phục vụ |
+| `customer@smartcafe.com` | Khách hàng |
+
+Chạy với Supabase thật:
+
+```bash
+flutter run --dart-define=SUPABASE_URL=<url> --dart-define=SUPABASE_ANON_KEY=<anon> --dart-define=SUPABASE_ENABLED=true
+```
+
+Tắt sync (offline thuần, không gọi Supabase):
+
+```bash
+flutter run --dart-define=SUPABASE_ENABLED=false
+```
+
+### Cấu trúc sync
+
+| File | Vai trò |
+|------|---------|
+| `lib/core/auth/auth_gateway.dart` | Seam auth: `AuthGatewaySupabase` (thật) / `AuthGatewayFake` (test/offline) |
+| `lib/data/services/outbox.dart` | Hàng đợi op chưa đồng bộ (persist qua prefs) |
+| `lib/data/services/sync_engine.dart` | Replay outbox qua RPC + pull increment + realtime |
+| `supabase/migrations/*.sql` | Schema, RPC (money/stock), RLS, GRANT |
+| `supabase/seed.sql` + `scripts/seed_auth.sh` | Demo data + tài khoản |
+
+### Kiến trúc backend
+
+- Bảng `orders`/`order_items`/`stock_transactions`/`audit_log`: **chỉ ghi qua RPC** (`rpc_place_order`, `rpc_consume_recipe`, `rpc_pay_order`, `rpc_cancel_order`, `rpc_move_order`, `rpc_adjust_stock`) — SECURITY DEFINER, 1 transaction, idempotent. Trả tiền 2 lần = no-op; trừ kho 2 lần = bị chặn bởi `stock_consumed`; bàn bận = `table_busy`.
+- `app_users` tự tạo khi có user mới trong `auth.users` (trigger `handle_new_user`).
+- `app_role()` + RLS: staff đọc reference, admin ghi, khách đọc đúng dữ liệu của mình.
+
+## 📝 Notes nghiệp vụ
 
 ## 📝 Notes nghiệp vụ
 

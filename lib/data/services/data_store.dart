@@ -28,6 +28,7 @@ import '../seed/seed_tables.dart';
 import '../seed/seed_toppings.dart';
 import '../seed/seed_users.dart';
 import '../seed/seed_vouchers.dart';
+import 'outbox.dart';
 import 'persistence.dart';
 
 /// In-memory data store - đóng vai trò mô phỏng Firestore.
@@ -48,6 +49,9 @@ class DataStore extends ChangeNotifier {
 
   static const String storageKey = 'smartcafe_data_v1';
   SharedPreferences? _prefs;
+
+  /// Outbox cho sync: nếu null (offline mode) thì mọi hook là no-op.
+  Outbox? outbox;
 
   /// Bộ đếm dùng để sinh mã đơn — cần lưu cùng state để không trùng mã.
   int orderSeq = 0;
@@ -97,6 +101,19 @@ class DataStore extends ChangeNotifier {
   void notifyListeners() {
     super.notifyListeners();
     unawaited(_persist());
+  }
+
+  /// Ghi op vào outbox để đồng bộ lên server. No-op khi outbox chưa bật
+  /// (offline mode thuần / test).
+  Future<void> enqueueOutbox(OutboxOp op) async {
+    final ob = outbox;
+    if (ob == null) return;
+    await ob.enqueue(op);
+  }
+
+  /// Lưu trữ outbox để DataStore tự enqueue (gọi từ nơi khởi tạo sync).
+  void attachOutbox(Outbox ob) {
+    outbox = ob;
   }
 
   // ===== USER =====
@@ -310,6 +327,15 @@ class DataStore extends ChangeNotifier {
       createdBy: createdBy,
     ));
     notifyListeners();
+    unawaited(enqueueOutbox(OutboxOp(
+      type: 'adjust_stock',
+      payload: {
+        'ingredientId': ingId,
+        'type': 'in',
+        'quantity': qty,
+        'note': note,
+      },
+    )));
   }
 
   void stockOut(String ingId, double qty, String createdBy,
@@ -329,6 +355,15 @@ class DataStore extends ChangeNotifier {
       createdBy: createdBy,
     ));
     notifyListeners();
+    unawaited(enqueueOutbox(OutboxOp(
+      type: 'adjust_stock',
+      payload: {
+        'ingredientId': ingId,
+        'type': 'out',
+        'quantity': qty,
+        'note': note,
+      },
+    )));
   }
 
   /// Trả về danh sách nguyên liệu không đủ để làm các [items].
@@ -490,6 +525,20 @@ class DataStore extends ChangeNotifier {
       role: UserRole.barista,
     );
     notifyListeners();
+    unawaited(enqueueOutbox(OutboxOp(
+      type: 'place_order',
+      payload: {
+        'orderId': order.id,
+        'orderType': order.orderType.name,
+        'items': order.items.map(orderItemToJson).toList(),
+        'tableId': tableId,
+        'customerId': customerId,
+        'voucherCode': voucher?.code,
+        'pointsUsed': pointsUsed,
+        'pointsDiscount': pointsDiscount,
+        'note': note,
+      },
+    )));
     return order;
   }
 
@@ -504,6 +553,11 @@ class DataStore extends ChangeNotifier {
     o.updatedAt = DateTime.now();
     if (status == OrderStatus.preparing) {
       consumeRecipe(o);
+      // DB trừ kho 1 lần duy nhất (idempotent qua stock_consumed guard)
+      unawaited(enqueueOutbox(OutboxOp(
+        type: 'consume_recipe',
+        payload: {'orderId': orderId},
+      )));
     }
     _checkSlowOrderAlerts();
     notifyListeners();
@@ -540,6 +594,10 @@ class DataStore extends ChangeNotifier {
       }
     }
     notifyListeners();
+    unawaited(enqueueOutbox(OutboxOp(
+      type: 'pay_order',
+      payload: {'orderId': orderId, 'method': method.name},
+    )));
   }
 
   /// Chuyển order (đơn đang phục vụ) sang bàn khác.
@@ -563,6 +621,10 @@ class DataStore extends ChangeNotifier {
       role: UserRole.waiter,
     );
     notifyListeners();
+    unawaited(enqueueOutbox(OutboxOp(
+      type: 'move_order',
+      payload: {'orderId': orderId, 'newTableId': newTableId},
+    )));
   }
 
   /// Gộp 2 bàn đang phục vụ: gộp toàn bộ món vào bàn đích, bàn nguồn về trống.
@@ -626,6 +688,30 @@ class DataStore extends ChangeNotifier {
       role: UserRole.waiter,
     );
     notifyListeners();
+    // gộp bàn trên server = hủy 2 đơn gốc (ghi đè quyền lực DB) + đơn gộp mới
+    unawaited(enqueueOutbox(OutboxOp(
+      type: 'cancel_order',
+      payload: {'orderId': fromOrder.id, 'reason': 'merge_tables'},
+    )));
+    unawaited(enqueueOutbox(OutboxOp(
+      type: 'cancel_order',
+      payload: {'orderId': toOrder.id, 'reason': 'merge_tables'},
+    )));
+    // đơn gộp mới tạo trên server sau khi 2 đơn gốc bị hủy (bàn đích đã trống)
+    unawaited(enqueueOutbox(OutboxOp(
+      type: 'place_order',
+      payload: {
+        'orderId': merged.id,
+        'orderType': merged.orderType.name,
+        'items': merged.items.map(orderItemToJson).toList(),
+        'tableId': to.id,
+        'customerId': merged.customerId,
+        'voucherCode': merged.voucherCode,
+        'pointsUsed': merged.pointsUsed,
+        'pointsDiscount': merged.pointsDiscount,
+        'note': merged.note,
+      },
+    )));
   }
 
   int iOf(String orderId) {
@@ -651,6 +737,10 @@ class DataStore extends ChangeNotifier {
       }
     }
     notifyListeners();
+    unawaited(enqueueOutbox(OutboxOp(
+      type: 'cancel_order',
+      payload: {'orderId': orderId, 'reason': reason},
+    )));
   }
 
   // ===== NOTIFICATIONS =====
