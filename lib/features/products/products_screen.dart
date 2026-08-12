@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_drawer.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/product_image.dart';
 import '../../data/models/product.dart';
 import '../../data/services/data_store.dart';
 
@@ -83,7 +84,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     return Card(
                       child: ListTile(
                         onTap: () => _addEdit(context, store, p),
-                        leading: Text(p.emoji, style: const TextStyle(fontSize: 32)),
+                        leading: ProductImage(
+                            imageUrl: p.imageUrl,
+                            emoji: p.emoji,
+                            size: 40,
+                            borderRadius: 8),
                         title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                         subtitle: Text(Fmt.money(p.basePrice) + (p.hidden ? ' • Đã ẩn' : '') + (!p.inStock ? ' • Hết hàng' : '')),
                         trailing: PopupMenuButton<String>(
@@ -121,6 +126,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
     final priceL = TextEditingController(
         text: (p?.priceBySize[DrinkSize.l] ?? 38000).toStringAsFixed(0));
     final emoji = TextEditingController(text: p?.emoji ?? '☕');
+    final imageUrlCtrl = TextEditingController(text: p?.imageUrl ?? '');
     String catId = p?.categoryId ?? store.categories.first.id;
     final topIds = <String>[...?p?.availableToppingIds];
 
@@ -137,6 +143,9 @@ class _ProductsScreenState extends State<ProductsScreen> {
                   decoration: const InputDecoration(labelText: 'Mô tả')),
               TextField(controller: emoji,
                   decoration: const InputDecoration(labelText: 'Emoji / icon')),
+              TextField(controller: imageUrlCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'Image URL', hintText: 'https://...')),
               const SizedBox(height: 8),
               Row(children: [
                 Expanded(
@@ -210,6 +219,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     name: name.text.trim(),
                     description: desc.text.trim(),
                     emoji: emoji.text.trim().isEmpty ? '☕' : emoji.text.trim(),
+                    imageUrl: imageUrlCtrl.text.trim(),
                     categoryId: catId,
                     basePrice: mVal,
                     priceBySize: bySize,
@@ -220,6 +230,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                     name: name.text.trim(),
                     description: desc.text.trim(),
                     emoji: emoji.text.trim(),
+                    imageUrl: imageUrlCtrl.text.trim(),
                     categoryId: catId,
                     basePrice: mVal,
                     priceBySize: bySize,

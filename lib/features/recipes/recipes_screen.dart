@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_drawer.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/product_image.dart';
 import '../../data/models/recipe.dart';
 import '../../data/services/data_store.dart';
 
@@ -46,8 +47,11 @@ class RecipesScreen extends StatelessWidget {
                   const SizedBox(height: 4),
                   ...missing.take(6).map((p) => Card(
                         child: ListTile(
-                          leading:
-                              Text(p.emoji, style: const TextStyle(fontSize: 26)),
+                          leading: ProductImage(
+                              imageUrl: p.imageUrl,
+                              emoji: p.emoji,
+                              size: 36,
+                              borderRadius: 8),
                           title: Text(p.name),
                           subtitle: const Text('Chưa có công thức - không trừ kho được',
                               style: TextStyle(fontSize: 11, color: AppColors.warning)),
@@ -106,7 +110,16 @@ class RecipesScreen extends StatelessWidget {
                 decoration: const InputDecoration(labelText: 'Sản phẩm'),
                 items: store.products
                     .map((p) => DropdownMenuItem(
-                        value: p.id, child: Text(p.emoji + ' ' + p.name)))
+                        value: p.id,
+                        child: Row(children: [
+                          ProductImage(
+                              imageUrl: p.imageUrl,
+                              emoji: p.emoji,
+                              size: 24,
+                              borderRadius: 4),
+                          const SizedBox(width: 8),
+                          Text(p.name),
+                        ])))
                     .toList(),
                 onChanged: (v) => setSt(() => productId = v!),
               ),
@@ -208,7 +221,11 @@ class _RecipeCard extends StatelessWidget {
     final profit = price - cost;
     return Card(
       child: ExpansionTile(
-        leading: Text(p.emoji, style: const TextStyle(fontSize: 28)),
+        leading: ProductImage(
+            imageUrl: p.imageUrl,
+            emoji: p.emoji,
+            size: 40,
+            borderRadius: 8),
         title: Text(p.name + ' (' + recipe.size.code + ')',
             style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Text(

@@ -5,6 +5,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_drawer.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/product_image.dart';
 import '../../data/models/product.dart';
 import '../../data/services/data_store.dart';
 import '../auth/auth_provider.dart';
@@ -208,7 +209,6 @@ class _MenuTabState extends State<_MenuTab> {
                         builder: (_) => ProductOptionsSheet(product: p)),
                     borderRadius: BorderRadius.circular(16),
                     child: Container(
-                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: AppColors.cardBg,
                         border: Border.all(color: AppColors.border),
@@ -217,27 +217,64 @@ class _MenuTabState extends State<_MenuTab> {
                       child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Center(
-                                child: Container(
-                              width: 80,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                  color: AppColors.background,
-                                  borderRadius: BorderRadius.circular(12)),
-                              child: Center(
-                                  child: Text(p.emoji,
-                                      style: const TextStyle(fontSize: 44))),
-                            )),
-                            const SizedBox(height: 10),
-                            Text(p.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600)),
-                            Text(Fmt.money(p.basePrice),
-                                style: const TextStyle(
-                                    color: AppColors.primary,
-                                    fontWeight: FontWeight.w700)),
+                            Expanded(
+                              flex: 3,
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  ProductImage(
+                                    imageUrl: p.imageUrl,
+                                    emoji: p.emoji,
+                                    size: double.infinity,
+                                    borderRadius: 16,
+                                  ),
+                                  Positioned(
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.fromLTRB(
+                                          10, 20, 10, 8),
+                                      decoration: const BoxDecoration(
+                                        borderRadius: BorderRadius.only(
+                                          bottomLeft: Radius.circular(16),
+                                          bottomRight: Radius.circular(16),
+                                        ),
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [
+                                            Colors.transparent,
+                                            Colors.black54,
+                                          ],
+                                        ),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(p.name,
+                                              maxLines: 1,
+                                              overflow:
+                                                  TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.white)),
+                                          Text(Fmt.money(p.basePrice),
+                                              style: const TextStyle(
+                                                  fontSize: 12,
+                                                  color:
+                                                      Color(0xFFFFD700),
+                                                  fontWeight:
+                                                      FontWeight.w700)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ]),
                     ),
                   );

@@ -6,6 +6,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_drawer.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/product_image.dart';
 import '../../core/widgets/status_badge.dart';
 import '../../data/models/order.dart';
 import '../../data/services/data_store.dart';
@@ -174,13 +175,16 @@ class _OrderCard extends StatelessWidget {
                 child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                            color: AppColors.background,
-                            borderRadius: BorderRadius.circular(8)),
-                        child: Text(it.emoji,
-                            style: const TextStyle(fontSize: 18)),
+                      ProductImage(
+                        imageUrl: store.products
+                            .cast<dynamic>()
+                            .firstWhere((p) => p.id == it.productId,
+                                orElse: () => null)
+                            ?.imageUrl ??
+                            '',
+                        emoji: it.emoji,
+                        size: 30,
+                        borderRadius: 8,
                       ),
                       const SizedBox(width: 10),
                       Expanded(

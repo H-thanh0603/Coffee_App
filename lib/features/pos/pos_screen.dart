@@ -5,6 +5,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_drawer.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/product_image.dart';
 import '../../data/models/product.dart';
 import '../../data/services/data_store.dart';
 import '../cart/cart_provider.dart';
@@ -167,7 +168,6 @@ class _ProductTile extends StatelessWidget {
         onTap: product.inStock ? onTap : null,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             border: Border.all(color: AppColors.border),
             borderRadius: BorderRadius.circular(16),
@@ -175,31 +175,77 @@ class _ProductTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Container(
-                  width: 80, height: 80,
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Center(
-                    child: Text(product.emoji, style: const TextStyle(fontSize: 44)),
-                  ),
+              // Ảnh sản phẩm lớn
+              Expanded(
+                flex: 3,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ProductImage(
+                      imageUrl: product.imageUrl,
+                      emoji: product.emoji,
+                      size: double.infinity,
+                      borderRadius: 16,
+                    ),
+                    // Gradient overlay tên + giá
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(10, 20, 10, 8),
+                        decoration: BoxDecoration(
+                          borderRadius: const BorderRadius.only(
+                            bottomLeft: Radius.circular(16),
+                            bottomRight: Radius.circular(16),
+                          ),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.7),
+                            ],
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(product.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white)),
+                            Text(Fmt.money(product.basePrice),
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFFFFD700),
+                                    fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (!product.inStock)
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Center(
+                            child: Text('HẾT HÀNG',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white)),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 10),
-              Text(product.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 2),
-              Text(Fmt.money(product.basePrice),
-                  style: const TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w700)),
-              if (!product.inStock)
-                const Padding(
-                  padding: EdgeInsets.only(top: 4),
-                  child: Text('Hết hàng', style: TextStyle(fontSize: 11, color: AppColors.danger)),
-                ),
             ],
           ),
         ),

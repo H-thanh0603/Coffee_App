@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/enums.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/widgets/product_image.dart';
 import '../../data/models/product.dart';
 import '../../data/models/topping.dart';
 import '../../data/services/data_store.dart';
@@ -69,10 +70,11 @@ class _ProductOptionsSheetState extends State<ProductOptionsSheet> {
                 children: [
                   Row(
                     children: [
-                      Container(
-                        width: 80, height: 80,
-                        decoration: BoxDecoration(color: AppColors.cardBg, borderRadius: BorderRadius.circular(12)),
-                        child: Center(child: Text(p.emoji, style: const TextStyle(fontSize: 48))),
+                      ProductImage(
+                        imageUrl: p.imageUrl,
+                        emoji: p.emoji,
+                        size: 80,
+                        borderRadius: 12,
                       ),
                       const SizedBox(width: 14),
                       Expanded(

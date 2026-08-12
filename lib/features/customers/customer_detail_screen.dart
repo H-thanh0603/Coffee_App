@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/product_image.dart';
 import '../../core/widgets/status_badge.dart';
 import '../../data/models/customer.dart';
 import '../../data/models/product.dart';
@@ -114,8 +115,11 @@ class CustomerDetailScreen extends StatelessWidget {
             runSpacing: 8,
             children: favorites
                 .map((e) => Chip(
-                      avatar: Text(e.key.emoji,
-                          style: const TextStyle(fontSize: 16)),
+                      avatar: ProductImage(
+                          imageUrl: e.key.imageUrl,
+                          emoji: e.key.emoji,
+                          size: 24,
+                          borderRadius: 4),
                       label: Text(
                           e.key.name + ' (' + e.value.toString() + ' lần)'),
                     ))

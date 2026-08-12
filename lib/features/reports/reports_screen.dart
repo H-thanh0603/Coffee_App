@@ -5,6 +5,7 @@ import '../../core/constants/enums.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_drawer.dart';
+import '../../core/widgets/product_image.dart';
 import '../../core/widgets/stat_card.dart';
 import '../../data/services/data_store.dart';
 import '../dashboard/revenue_chart.dart';
@@ -132,8 +133,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
             top
                 .map(
                   (e) => ListTile(
-                    leading:
-                        Text(e.key.emoji, style: const TextStyle(fontSize: 24)),
+                    leading: ProductImage(
+                        imageUrl: e.key.imageUrl,
+                        emoji: e.key.emoji,
+                        size: 32,
+                        borderRadius: 8),
                     title: Text(e.key.name),
                     trailing: Text(e.value.toString() + ' ly',
                         style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -147,8 +151,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   .take(5)
                   .map(
                     (e) => ListTile(
-                      leading: Text(e.key.emoji,
-                          style: const TextStyle(fontSize: 24)),
+                      leading: ProductImage(
+                          imageUrl: e.key.imageUrl,
+                          emoji: e.key.emoji,
+                          size: 32,
+                          borderRadius: 8),
                       title: Text(e.key.name),
                       trailing: Text(e.value.toString() + ' ly',
                           style: const TextStyle(

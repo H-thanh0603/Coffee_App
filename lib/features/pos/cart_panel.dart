@@ -5,6 +5,7 @@ import '../../core/constants/enums.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/product_image.dart';
 import '../../data/services/data_store.dart';
 import '../cart/cart_provider.dart';
 import 'checkout_dialog.dart';
@@ -398,20 +399,19 @@ class _CartItemTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cart = context.watch<CartProvider>();
+    final store = context.watch<DataStore>();
+    final product = store.products.cast<dynamic>().firstWhere(
+        (p) => p.id == item.productId, orElse: () => null);
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-                child: Text(item.emoji, style: const TextStyle(fontSize: 28))),
+          ProductImage(
+            imageUrl: product?.imageUrl ?? '',
+            emoji: item.emoji,
+            size: 56,
+            borderRadius: 10,
           ),
           const SizedBox(width: 12),
           Expanded(
