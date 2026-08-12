@@ -25,16 +25,22 @@ void main() async {
   final store = DataStore();
   await store.init();
   AuthProvider auth;
+  SyncEngine? engine;
   if (SupabaseConfig.syncEnabled) {
     final outbox = Outbox();
     await outbox.init();
     store.attachOutbox(outbox);
     final client = Supabase.instance.client;
-    final engine = SyncEngine(outbox: outbox, store: store, client: client);
+    engine = SyncEngine(outbox: outbox, store: store, client: client);
     engine.start();
+    engine.listenAuth(); // auto-update role on login/logout
     auth = AuthProvider.withGateway(AuthGatewaySupabase(client));
     // khôi phục session đã lưu (mở app không cần login lại)
     await auth.restoreSession();
+    // Set role cho realtime subscriptions sau khi có auth
+    if (auth.role != null) {
+      engine.setRole(auth.role!);
+    }
   } else {
     auth = AuthProvider(store);
   }

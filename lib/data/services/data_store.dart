@@ -97,10 +97,32 @@ class DataStore extends ChangeNotifier {
     }
   }
 
+  // --- Debounced persist ---------------------------------------------------
+  Timer? _persistTimer;
+  bool _batching = false;
+  static const Duration _persistDelay = Duration(seconds: 2);
+
   @override
   void notifyListeners() {
     super.notifyListeners();
+    if (_batching) return;
+    _persistTimer?.cancel();
+    _persistTimer = Timer(_persistDelay, () {
+      unawaited(_persist());
+    });
+  }
+
+  /// Bật batch mode: suppress notifyListeners + persist.
+  /// Gọi [endBatchUpdate] khi xong để persist 1 lần + notify UI.
+  void beginBatchUpdate() {
+    _batching = true;
+  }
+
+  void endBatchUpdate() {
+    _batching = false;
+    _persistTimer?.cancel();
     unawaited(_persist());
+    notifyListeners();
   }
 
   /// Ghi op vào outbox để đồng bộ lên server. No-op khi outbox chưa bật

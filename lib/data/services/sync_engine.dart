@@ -1,7 +1,17 @@
 import 'dart:async';
+import 'dart:math' show Random;
 
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'
+    show
+        AuthChangeEvent,
+        AuthException,
+        AuthState,
+        PostgrestException,
+        PostgresChangeEvent,
+        PostgrestFilterBuilder,
+        RealtimeChannel,
+        SupabaseClient;
 
 import '../../core/constants/enums.dart';
 import '../models/cafe_table.dart';
@@ -31,6 +41,7 @@ class SyncEngine {
         client = null;
 
   static const String watermarkKey = 'smartcafe_sync_v1';
+  static const String orderWatermarkKey = 'smartcafe_sync_orders_v1';
 
   final Outbox outbox;
   final DataStore store;
@@ -43,15 +54,71 @@ class SyncEngine {
   Timer? _timer;
   RealtimeChannel? _channel;
 
+  // --- Exponential backoff ---
+  Duration _currentInterval = const Duration(seconds: 15);
+  static const Duration _baseInterval = Duration(seconds: 15);
+  static const Duration _maxInterval = Duration(seconds: 120);
+
+  // --- Per-role realtime ---
+  UserRole? _role;
+  UserRole? _subscribedRole;
+  StreamSubscription<AuthState>? _authSub;
+
+  void setRole(UserRole? role) {
+    if (_role == role) return;
+    _role = role;
+    // Re-subscribe with new role
+    _channel?.unsubscribe();
+    _channel = null;
+    _subscribedRole = null;
+    ensureRealtime();
+  }
+
+  /// Lắng nghe auth state: khi login/logout -> fetch role từ app_users
+  /// và cập nhật realtime subscriptions.
+  void listenAuth() {
+    final c = client;
+    if (c == null) return;
+    _authSub?.cancel();
+    _authSub = c.auth.onAuthStateChange.listen((data) async {
+      final event = data.event;
+      if (event == AuthChangeEvent.signedIn ||
+          event == AuthChangeEvent.tokenRefreshed) {
+        final userId = data.session?.user.id;
+        if (userId == null) return;
+        try {
+          final row = await c
+              .from('app_users')
+              .select('role')
+              .eq('id', userId)
+              .limit(1)
+              .maybeSingle();
+          if (row != null) {
+            final roleCode = row['role'] as String?;
+            if (roleCode != null) {
+              final role =
+                  UserRole.values.where((r) => r.name == roleCode).firstOrNull;
+              if (role != null) setRole(role);
+            }
+          }
+        } catch (_) {
+          // offline/error -> keep current role
+        }
+      } else if (event == AuthChangeEvent.signedOut) {
+        setRole(null);
+      }
+    });
+  }
+
+  void dispose() {
+    _authSub?.cancel();
+    _authSub = null;
+  }
+
   void start() {
     if (!_enabled || _running) return;
     _running = true;
-    // retry loop: mỗi 15s thử push/pull (khi online). Cheap no-op khi offline.
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) {
-      unawaited(flush());
-      unawaited(pull());
-      ensureRealtime();
-    });
+    _scheduleNext();
     unawaited(flush());
     unawaited(pull());
     ensureRealtime();
@@ -65,45 +132,134 @@ class SyncEngine {
     _channel = null;
   }
 
+  // --- Exponential backoff timer ---
+
+  void _scheduleNext() {
+    _timer?.cancel();
+    // ±20% jitter để tránh thundering herd
+    final jitterMs =
+        (_currentInterval.inMilliseconds * 0.2 * Random().nextDouble()).toInt();
+    final delay = _currentInterval + Duration(milliseconds: jitterMs);
+    _timer = Timer(delay, () {
+      if (!_running) return;
+      unawaited(_tick());
+    });
+  }
+
+  Future<void> _tick() async {
+    await Future.wait([flush(), pull()]);
+    ensureRealtime();
+    _scheduleNext();
+  }
+
+  void _onSyncSuccess() {
+    _currentInterval = _baseInterval;
+  }
+
+  void _onSyncFailure() {
+    final nextMs = (_currentInterval.inMilliseconds * 2)
+        .clamp(_baseInterval.inMilliseconds, _maxInterval.inMilliseconds);
+    _currentInterval = Duration(milliseconds: nextMs);
+  }
+
+  // --- Per-role realtime subscriptions ---
+
   /// Đăng ký realtime (postgres_changes) khi có session: sự thay đổi ở DB
-  /// (đơn/bàn/khách/kho/voucher) kích hoạt pull ngay -> 2 app hội tụ nhanh.
-  /// Gọi lại sau mỗi tick; khi chưa login thì không làm gì.
+  /// kích hoạt pull ngay -> 2 app hội tụ nhanh.
+  /// Chỉ subscribe các table liên quan đến role hiện tại.
   void ensureRealtime() {
     final c = client;
-    if (!_enabled || _channel != null || !online || c == null) return;
-    _channel = c.channel('smartcafe-changes')
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'orders',
-        callback: (_) => unawaited(pull()),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'cafe_tables',
-        callback: (_) => unawaited(pull()),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'customers',
-        callback: (_) => unawaited(pull()),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'ingredients',
-        callback: (_) => unawaited(pull()),
-      )
-      ..onPostgresChanges(
-        event: PostgresChangeEvent.all,
-        schema: 'public',
-        table: 'vouchers',
-        callback: (_) => unawaited(pull()),
-      )
-      ..subscribe();
+    if (!_enabled || !online || c == null) return;
+
+    // Chưa có role -> fallback subscribe all (như cũ)
+    final role = _role;
+    if (role == null) {
+      if (_channel != null) return;
+      _subscribeAll(c);
+      return;
+    }
+
+    // Đã subscribe role này rồi -> skip
+    if (_channel != null && _subscribedRole == role) return;
+
+    // Role thay đổi -> unsubscribe旧, subscribe mới
+    _channel?.unsubscribe();
+    _subscribedRole = role;
+    _subscribeForRole(c, role);
   }
+
+  void _subscribeAll(SupabaseClient c) {
+    final tables = [
+      'orders',
+      'cafe_tables',
+      'customers',
+      'ingredients',
+      'vouchers',
+      'products',
+      'categories',
+      'toppings',
+    ];
+    _channel = _createChannel(c, 'smartcafe-all', tables);
+  }
+
+  void _subscribeForRole(SupabaseClient c, UserRole role) {
+    final tables = _tablesForRole(role);
+    _channel = _createChannel(c, 'smartcafe-${role.name}', tables);
+  }
+
+  RealtimeChannel _createChannel(
+      SupabaseClient c, String name, List<String> tables) {
+    final ch = c.channel(name);
+    for (final table in tables) {
+      ch.onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: table,
+        callback: (_) => unawaited(pull()),
+      );
+    }
+    return ch..subscribe();
+  }
+
+  List<String> _tablesForRole(UserRole role) => switch (role) {
+        UserRole.admin => [
+            'orders',
+            'cafe_tables',
+            'customers',
+            'ingredients',
+            'vouchers',
+            'products',
+            'categories',
+            'toppings',
+          ],
+        UserRole.cashier => [
+            'orders',
+            'cafe_tables',
+            'customers',
+            'products',
+            'categories',
+            'toppings',
+          ],
+        UserRole.barista => [
+            'orders',
+            'cafe_tables',
+            'ingredients',
+            'products',
+            'categories',
+            'toppings',
+          ],
+        UserRole.waiter => [
+            'orders',
+            'cafe_tables',
+            'products',
+            'categories',
+            'toppings',
+          ],
+        UserRole.customer => [
+            'orders',
+            'cafe_tables',
+          ],
+      };
 
   bool get online => _enabled && client?.auth.currentSession != null;
 
@@ -120,16 +276,16 @@ class SyncEngine {
           await outbox.remove(op.id);
         } on AuthException {
           return; // mất session -> dừng
-        } on PostgrestException catch (e) {
-          // lỗi nghiệp vụ vĩnh viễn (vd table_busy, order_paid) -> bỏ op,
-          // để không kẹt hàng đợi mãi; UI đã có conflict banner.
-          if (e.code == null || e.code!.startsWith('P')) {
+        } catch (e) {
+          if (e is PostgrestException &&
+              e.code != null &&
+              e.code!.startsWith('P')) {
+            // lỗi nghiệp vụ vĩnh viễn (vd table_busy, order_paid) -> bỏ op,
+            // để không kẹt hàng đợi mãi; UI đã có conflict banner.
             await outbox.remove(op.id);
           } else {
             return; // network/transient -> retry sau
           }
-        } catch (_) {
-          return; // transient -> retry sau
         }
       }
     } finally {
@@ -183,10 +339,12 @@ class SyncEngine {
   }
 
   /// Kéo dữ liệu thay đổi từ DB về (updated_at > watermark), gộp vào local.
-  /// RLS chặn khi chưa login / role không đủ -> không có hại.
+  /// Dùng batch mode: suppress notifyListeners + persist trong pull,
+  /// gọi endBatchUpdate 1 lần ở cuối -> 1 persist duy nhất.
   Future<void> pull() async {
     if (!online || _pulling) return;
     _pulling = true;
+    store.beginBatchUpdate();
     try {
       final c = client!;
       final prefs = await SharedPreferences.getInstance();
@@ -203,13 +361,15 @@ class SyncEngine {
       await _pullIngredients(c, filter);
       await _pullCustomers(c, filter);
       await _pullVouchers(c, filter);
-      await _pullOrders(c, filter);
+      await _pullOrders(c);
 
       final now = DateTime.now().toUtc().toIso8601String();
       await prefs.setString(watermarkKey, now);
+      _onSyncSuccess();
     } catch (_) {
-      // offline/RLS deny -> retry lần sau
+      _onSyncFailure();
     } finally {
+      store.endBatchUpdate();
       _pulling = false;
     }
   }
@@ -301,14 +461,11 @@ class SyncEngine {
       final existing = store.findTable(id);
       if (existing == null) {
         store.tables.add(table);
-        store.notifyListeners();
       } else if (existing.status != table.status ||
           existing.currentOrderId != table.currentOrderId ||
           existing.tableName != table.tableName) {
-        // giữ vị trí list; cập nhật field trực tiếp (CafeTable mutable)
         existing.status = table.status;
         existing.currentOrderId = table.currentOrderId;
-        store.notifyListeners();
       }
     }
   }
@@ -333,8 +490,6 @@ class SyncEngine {
       if (existing == null) {
         store.addIngredient(ing);
       } else {
-        // DB là nguồn quyền lực cho kho -> ghi đè bằng object mới
-        // (giữ createdAt local, cập nhật updatedAt)
         final idx = store.ingredients.indexOf(existing);
         store.ingredients[idx] = Ingredient(
           id: id,
@@ -349,7 +504,6 @@ class SyncEngine {
           createdAt: existing.createdAt,
           updatedAt: DateTime.now(),
         );
-        store.notifyListeners();
       }
     }
   }
@@ -377,12 +531,10 @@ class SyncEngine {
       if (existing == null) {
         store.addCustomer(customer);
       } else {
-        // DB quyền lực cho điểm/rank/doanh số
         existing.points = points;
         existing.rank = CustomerRank.fromPoints(points);
         existing.totalSpent = customer.totalSpent;
         existing.totalOrders = customer.totalOrders;
-        store.notifyListeners();
       }
     }
   }
@@ -414,9 +566,23 @@ class SyncEngine {
     }
   }
 
-  Future<void> _pullOrders(SupabaseClient c, _WatermarkFilter? filter) async {
-    final rows = await _select(c, 'orders', filter);
+  /// Pull orders với cursor-based pagination, LIMIT 100 per cycle.
+  /// Dùng orderWatermarkKey riêng biệt để track last-seen updated_at.
+  Future<void> _pullOrders(SupabaseClient c) async {
+    final prefs = await SharedPreferences.getInstance();
+    final orderWatermark = prefs.getString(orderWatermarkKey);
+
+    var q = c.from('orders').select();
+    if (orderWatermark != null) {
+      q = q.gte('updated_at', orderWatermark);
+    }
+    final rows = (await q
+            .order('updated_at', ascending: true)
+            .limit(100))
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
     if (rows.isEmpty) return;
+
     // lấy order_items cho các đơn vừa pull
     final orderIds = rows.map((r) => r['id'] as String).toList();
     final itemRows =
@@ -445,6 +611,7 @@ class SyncEngine {
       itemsByOrder.putIfAbsent(oid, () => []).add(item);
     }
 
+    String? latestUpdatedAt;
     for (final r in rows) {
       final id = r['id'] as String;
       final order = AppOrder(
@@ -484,8 +651,18 @@ class SyncEngine {
       } else {
         store.orders.add(order);
       }
+
+      // Track cursor
+      final ua = r['updated_at'] as String?;
+      if (ua != null &&
+          (latestUpdatedAt == null || ua.compareTo(latestUpdatedAt) > 0)) {
+        latestUpdatedAt = ua;
+      }
     }
-    store.notifyListeners();
+
+    if (latestUpdatedAt != null) {
+      await prefs.setString(orderWatermarkKey, latestUpdatedAt);
+    }
   }
 
   Future<List<Map<String, dynamic>>> _select(
