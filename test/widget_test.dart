@@ -14,12 +14,14 @@ void main() {
     final store = DataStore();
     await store.init();
     final themeProvider = ThemeProvider();
+    final auth = AuthProvider(store);
+    await auth.restoreSession();
 
     await tester.pumpWidget(
       MultiProvider(
         providers: [
           ChangeNotifierProvider.value(value: store),
-          ChangeNotifierProvider(create: (_) => AuthProvider(store)),
+          ChangeNotifierProvider.value(value: auth),
           ChangeNotifierProvider(create: (_) => CartProvider()),
           ChangeNotifierProvider.value(value: themeProvider),
         ],

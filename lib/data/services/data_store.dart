@@ -29,10 +29,16 @@ import '../seed/seed_toppings.dart';
 import '../seed/seed_users.dart';
 import '../seed/seed_vouchers.dart';
 import 'persistence.dart';
+import 'supabase_repo.dart';
 
 /// In-memory data store - đóng vai trò mô phỏng Firestore.
 /// Tất cả các operation đều là realtime nhờ ChangeNotifier.
 class DataStore extends ChangeNotifier {
+  /// Writer lên Supabase. null client = offline/no backend, mọi enqueue no-op.
+  final SupabaseRepo repo;
+
+  DataStore({SupabaseRepo? repo})
+      : repo = repo ?? SupabaseRepo();
   final List<AppUser> users = [];
   final List<ProductCategory> categories = [];
   final List<Topping> toppings = [];
@@ -86,6 +92,48 @@ class DataStore extends ChangeNotifier {
     _seedSampleOrders();
   }
 
+  /// Pull data từ server về local lists. Thay thế toàn bộ cache local.
+  /// Trả true nếu pull thành công (data server hợp lệ).
+  Future<bool> refreshFromServer() async {
+    final ok = await repo.refresh();
+    if (!ok) return false;
+    final d = repo.lastPull;
+    if (d == null) return false;
+    _applyPull(d);
+    notifyListeners();
+    return true;
+  }
+
+  void _applyPull(Map<String, List<Map<String, dynamic>>> d) {
+    categories
+      ..clear()
+      ..addAll((d['categories'] ?? []).map(categoryFromJson));
+    toppings
+      ..clear()
+      ..addAll((d['toppings'] ?? []).map(toppingFromJson));
+    products
+      ..clear()
+      ..addAll((d['products'] ?? []).map(productFromJson));
+    tables
+      ..clear()
+      ..addAll((d['tables'] ?? []).map(tableFromJson));
+    customers
+      ..clear()
+      ..addAll((d['customers'] ?? []).map(customerFromJson));
+    ingredients
+      ..clear()
+      ..addAll((d['ingredients'] ?? []).map(ingredientFromJson));
+    recipes
+      ..clear()
+      ..addAll((d['recipes'] ?? []).map(recipeFromJson));
+    vouchers
+      ..clear()
+      ..addAll((d['vouchers'] ?? []).map(voucherFromJson));
+    orders
+      ..clear()
+      ..addAll((d['orders'] ?? []).map(orderFromJson));
+  }
+
   /// Lưu toàn bộ state xuống SharedPreferences.
   Future<void> _persist() async {
     final prefs = _prefs;
@@ -103,6 +151,30 @@ class DataStore extends ChangeNotifier {
     unawaited(_persist());
   }
 
+  // ===== REPO HELPERS =====
+  /// Payload cho create_order / merge_tables: mirror SQL params.
+  Map<String, dynamic> _orderOpPayload(AppOrder o) => {
+        'p_id': o.id,
+        'p_order_code': o.orderCode,
+        'p_table_id': o.tableId,
+        'p_table_name': o.tableName,
+        'p_customer_id': o.customerId,
+        'p_customer_name': o.customerName,
+        'p_cashier_id': o.cashierId,
+        'p_cashier_name': o.cashierName,
+        'p_order_type': o.orderType.code,
+        'p_items': o.items.map(orderItemToJson).toList(),
+        'p_subtotal': o.subtotal,
+        'p_discount': o.discount,
+        'p_voucher_code': o.voucherCode,
+        'p_points_used': o.pointsUsed,
+        'p_points_discount': o.pointsDiscount,
+        'p_total': o.total,
+        'p_note': o.note,
+      };
+
+  void _enqueue(SupabaseOp op) => repo.enqueue(op);
+
   // ===== USER =====
   AppUser? findUserByEmail(String email) {
     try {
@@ -114,12 +186,14 @@ class DataStore extends ChangeNotifier {
 
   void addUser(AppUser u) {
     users.add(u);
+    _enqueue(SupabaseOp(u.id, 'upsert_profiles', {'row': userToJson(u)}));
     notifyListeners();
   }
 
   void updateUser(AppUser u) {
     final i = users.indexWhere((e) => e.id == u.id);
     if (i >= 0) users[i] = u;
+    _enqueue(SupabaseOp(u.id, 'upsert_profiles', {'row': userToJson(u)}));
     notifyListeners();
   }
 
@@ -138,34 +212,40 @@ class DataStore extends ChangeNotifier {
 
   void addCategory(ProductCategory c) {
     categories.add(c);
+    _enqueue(SupabaseOp(c.id, 'upsert_categories', {'row': categoryToJson(c)}));
     notifyListeners();
   }
 
   void updateCategory(ProductCategory c) {
     final i = categories.indexWhere((e) => e.id == c.id);
     if (i >= 0) categories[i] = c;
+    _enqueue(SupabaseOp(c.id, 'upsert_categories', {'row': categoryToJson(c)}));
     notifyListeners();
   }
 
   void removeCategory(String id) {
     categories.removeWhere((c) => c.id == id);
+    _enqueue(SupabaseOp(id, 'delete_categories', {'id': id}));
     notifyListeners();
   }
 
   // ===== PRODUCT =====
   void addProduct(Product p) {
     products.add(p);
+    _enqueue(SupabaseOp(p.id, 'upsert_products', {'row': productToJson(p)}));
     notifyListeners();
   }
 
   void updateProduct(Product p) {
     final i = products.indexWhere((e) => e.id == p.id);
     if (i >= 0) products[i] = p;
+    _enqueue(SupabaseOp(p.id, 'upsert_products', {'row': productToJson(p)}));
     notifyListeners();
   }
 
   void removeProduct(String id) {
     products.removeWhere((p) => p.id == id);
+    _enqueue(SupabaseOp(id, 'delete_products', {'id': id}));
     notifyListeners();
   }
 
@@ -189,17 +269,42 @@ class DataStore extends ChangeNotifier {
 
   void addRecipe(Recipe r) {
     recipes.add(r);
+    _enqueue(SupabaseOp(r.id, 'save_recipe', {
+      'p_id': r.id,
+      'p_product_id': r.productId,
+      'p_size': r.size.name,
+      'p_items': r.items
+          .map((it) => {
+                'ingredientId': it.ingredientId,
+                'quantity': it.quantity,
+                'unit': it.unit,
+              })
+          .toList(),
+    }));
     notifyListeners();
   }
 
   void updateRecipe(Recipe r) {
     final i = recipes.indexWhere((e) => e.id == r.id);
     if (i >= 0) recipes[i] = r;
+    _enqueue(SupabaseOp(r.id, 'save_recipe', {
+      'p_id': r.id,
+      'p_product_id': r.productId,
+      'p_size': r.size.name,
+      'p_items': r.items
+          .map((it) => {
+                'ingredientId': it.ingredientId,
+                'quantity': it.quantity,
+                'unit': it.unit,
+              })
+          .toList(),
+    }));
     notifyListeners();
   }
 
   void removeRecipe(String id) {
     recipes.removeWhere((r) => r.id == id);
+    _enqueue(SupabaseOp(id, 'delete_recipes', {'id': id}));
     notifyListeners();
   }
 
@@ -213,17 +318,20 @@ class DataStore extends ChangeNotifier {
 
   void addTopping(Topping t) {
     toppings.add(t);
+    _enqueue(SupabaseOp(t.id, 'upsert_toppings', {'row': toppingToJson(t)}));
     notifyListeners();
   }
 
   void updateTopping(Topping t) {
     final i = toppings.indexWhere((e) => e.id == t.id);
     if (i >= 0) toppings[i] = t;
+    _enqueue(SupabaseOp(t.id, 'upsert_toppings', {'row': toppingToJson(t)}));
     notifyListeners();
   }
 
   void removeTopping(String id) {
     toppings.removeWhere((t) => t.id == id);
+    _enqueue(SupabaseOp(id, 'delete_toppings', {'id': id}));
     notifyListeners();
   }
 
@@ -240,6 +348,7 @@ class DataStore extends ChangeNotifier {
     if (t != null) {
       t.status = status;
       t.currentOrderId = orderId;
+      _enqueue(SupabaseOp(id, 'upsert_tables', {'row': tableToJson(t)}));
       if (status == TableStatus.waiting) {
         _addNotification(
           title: 'Bàn chờ thanh toán',
@@ -270,12 +379,14 @@ class DataStore extends ChangeNotifier {
 
   void addCustomer(Customer c) {
     customers.add(c);
+    _enqueue(SupabaseOp(c.id, 'upsert_customers', {'row': customerToJson(c)}));
     notifyListeners();
   }
 
   void updateCustomer(Customer c) {
     final i = customers.indexWhere((e) => e.id == c.id);
     if (i >= 0) customers[i] = c;
+    _enqueue(SupabaseOp(c.id, 'upsert_customers', {'row': customerToJson(c)}));
     notifyListeners();
   }
 
@@ -289,12 +400,16 @@ class DataStore extends ChangeNotifier {
 
   void addIngredient(Ingredient i) {
     ingredients.add(i);
+    _enqueue(
+        SupabaseOp(i.id, 'upsert_ingredients', {'row': ingredientToJson(i)}));
     notifyListeners();
   }
 
   void updateIngredient(Ingredient i) {
     final idx = ingredients.indexWhere((e) => e.id == i.id);
     if (idx >= 0) ingredients[idx] = i;
+    _enqueue(
+        SupabaseOp(i.id, 'upsert_ingredients', {'row': ingredientToJson(i)}));
     notifyListeners();
   }
 
@@ -303,7 +418,7 @@ class DataStore extends ChangeNotifier {
     if (ing == null) return;
     ing.currentStock += qty;
     ing.updatedAt = DateTime.now();
-    stockTxs.add(StockTransaction(
+    final tx = StockTransaction(
       id: const Uuid().v4(),
       ingredientId: ingId,
       ingredientName: ing.name,
@@ -312,7 +427,15 @@ class DataStore extends ChangeNotifier {
       unit: ing.unit,
       note: note,
       createdBy: createdBy,
-    ));
+    );
+    stockTxs.add(tx);
+    _enqueue(SupabaseOp(tx.id, 'stock_in', {
+      'p_id': tx.id,
+      'p_ingredient_id': ingId,
+      'p_qty': qty,
+      'p_note': note,
+      'p_created_by': createdBy,
+    }));
     notifyListeners();
   }
 
@@ -322,7 +445,7 @@ class DataStore extends ChangeNotifier {
     if (ing == null) return;
     ing.currentStock = (ing.currentStock - qty).clamp(0, double.infinity);
     ing.updatedAt = DateTime.now();
-    stockTxs.add(StockTransaction(
+    final tx = StockTransaction(
       id: const Uuid().v4(),
       ingredientId: ingId,
       ingredientName: ing.name,
@@ -331,7 +454,15 @@ class DataStore extends ChangeNotifier {
       unit: ing.unit,
       note: note,
       createdBy: createdBy,
-    ));
+    );
+    stockTxs.add(tx);
+    _enqueue(SupabaseOp(tx.id, 'stock_out', {
+      'p_id': tx.id,
+      'p_ingredient_id': ingId,
+      'p_qty': qty,
+      'p_note': note,
+      'p_created_by': createdBy,
+    }));
     notifyListeners();
   }
 
@@ -381,6 +512,11 @@ class DataStore extends ChangeNotifier {
       }
     }
     _checkLowStockAlerts();
+    _enqueue(SupabaseOp(order.id, 'consume_recipe', {
+      'p_order_id': order.id,
+      'p_order_code': order.orderCode,
+      'p_cashier_name': order.cashierName,
+    }));
     final missing = missingIngredients(order.items);
     if (missing.isNotEmpty) {
       _addNotification(
@@ -405,6 +541,7 @@ class DataStore extends ChangeNotifier {
 
   void addVoucher(Voucher v) {
     vouchers.add(v);
+    _enqueue(SupabaseOp(v.id, 'upsert_vouchers', {'row': voucherToJson(v)}));
     _checkVoucherAlerts();
     notifyListeners();
   }
@@ -412,12 +549,14 @@ class DataStore extends ChangeNotifier {
   void updateVoucher(Voucher v) {
     final i = vouchers.indexWhere((e) => e.id == v.id);
     if (i >= 0) vouchers[i] = v;
+    _enqueue(SupabaseOp(v.id, 'upsert_vouchers', {'row': voucherToJson(v)}));
     _checkVoucherAlerts();
     notifyListeners();
   }
 
   void removeVoucher(String id) {
     vouchers.removeWhere((v) => v.id == id);
+    _enqueue(SupabaseOp(id, 'delete_vouchers', {'id': id}));
     notifyListeners();
   }
 
@@ -481,6 +620,7 @@ class DataStore extends ChangeNotifier {
       type: 'order_new',
       role: UserRole.barista,
     );
+    _enqueue(SupabaseOp(order.id, 'create_order', _orderOpPayload(order)));
     notifyListeners();
     return order;
   }
@@ -514,6 +654,10 @@ class DataStore extends ChangeNotifier {
           : o.orderStatus,
     );
     orders[i] = updated;
+    _enqueue(SupabaseOp(orderId, 'pay_order', {
+      'p_order_id': orderId,
+      'p_method': method.name,
+    }));
     if (updated.tableId != null) {
       final tbl = findTable(updated.tableId!);
       if (tbl != null) {
@@ -546,8 +690,16 @@ class DataStore extends ChangeNotifier {
       oldT.currentOrderId = null;
     }
     orders[i] = o.copyWith(tableId: newT.id, tableName: newT.tableName);
+    if (oldT != null) {
+      _enqueue(SupabaseOp(oldT.id, 'upsert_tables', {'row': tableToJson(oldT)}));
+    }
     newT.status = TableStatus.serving;
     newT.currentOrderId = orderId;
+    _enqueue(SupabaseOp(newT.id, 'upsert_tables', {'row': tableToJson(newT)}));
+    _enqueue(SupabaseOp(
+        o.id,
+        'upsert_orders',
+        {'row': orderToJson(orders[i])..remove('items')}));
     _addNotification(
       title: 'Bàn ' + (o.tableName ?? '') + ' → ' + newT.tableName,
       message: 'Đơn ' + o.orderCode + ' đã chuyển bàn',
@@ -618,6 +770,13 @@ class DataStore extends ChangeNotifier {
     from.currentOrderId = null;
     to.status = TableStatus.serving;
     to.currentOrderId = merged.id;
+    _enqueue(SupabaseOp(merged.id, 'merge_tables', {
+      'p_merged_id': merged.id,
+      'p_order_code': merged.orderCode,
+      'p_from_id': from.id,
+      'p_to_id': to.id,
+      'p_note': merged.note,
+    }));
     _addNotification(
       title: 'Gộp bàn',
       message: to.tableName + ' tổng ' + merged.itemCount.toString() + ' món',
@@ -674,6 +833,7 @@ class DataStore extends ChangeNotifier {
       final v = findVoucherByCode(o.voucherCode!);
       if (v != null && v.usedCount > 0) v.usedCount -= 1;
     }
+    _enqueue(SupabaseOp(orderId, 'cancel_order', {'p_order_id': orderId}));
     notifyListeners();
   }
 

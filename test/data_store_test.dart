@@ -26,25 +26,25 @@ void main() {
   });
 
   group('AuthProvider', () {
-    test('đăng nhập sai mật khẩu / email không tồn tại bị từ chối', () {
+    test('đăng nhập sai mật khẩu / email không tồn tại bị từ chối', () async {
       final auth = AuthProvider(store);
-      expect(auth.login('admin@smartcafe.com', 'sai'), isNotNull);
-      expect(auth.login('khong@ton-tai.vn', '123456'), isNotNull);
+      expect(await auth.login('admin@smartcafe.com', 'sai'), isNotNull);
+      expect(await auth.login('khong@ton-tai.vn', '123456'), isNotNull);
     });
 
-    test('đăng nhập đúng -> isLoggedIn + role admin', () {
+    test('đăng nhập đúng -> isLoggedIn + role admin', () async {
       final auth = AuthProvider(store);
-      final err = auth.login('admin@smartcafe.com', '123456');
+      final err = await auth.login('admin@smartcafe.com', '123456');
       expect(err, isNull);
       expect(auth.isLoggedIn, isTrue);
       expect(auth.role, UserRole.admin);
     });
 
-    test('tài khoản bị khóa bị chặn', () {
+    test('tài khoản bị khóa bị chặn', () async {
       final auth = AuthProvider(store);
       final u = _cashier(store)!;
       store.updateUser(u.copyWith(active: false));
-      expect(auth.login(u.email, '123456'), isNotNull);
+      expect(await auth.login(u.email, '123456'), isNotNull);
       expect(auth.isLoggedIn, isFalse);
     });
   });

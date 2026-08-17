@@ -34,10 +34,13 @@ class AppRouter {
       redirect: (ctx, state) {
         final loggedIn = auth.isLoggedIn;
         final loc = state.matchedLocation;
-        // Splash root: bao giờ cũng nhảy đi đâu đó
+        // Splash root: giữ lại tới khi restore session xong, rồi nhảy đi
         if (loc == '/') {
+          if (!auth.restored) return null;
           return loggedIn ? RoleRouter.homeFor(auth.role!) : '/login';
         }
+        // Chưa restore (đang splash) mà vào màn khác -> giữ splash
+        if (!auth.restored) return null;
         // Chưa login mà vào màn protected -> ép về login
         if (!loggedIn && loc != '/login') return '/login';
         // Đã login rồi mà còn vào /login -> đẩy về home theo role
