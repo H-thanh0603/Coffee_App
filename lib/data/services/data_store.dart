@@ -89,7 +89,8 @@ class DataStore extends ChangeNotifier {
     ingredients.addAll(seedIngredients());
     recipes.addAll(seedRecipes());
     vouchers.addAll(seedVouchers());
-    _seedSampleOrders();
+    // Không seed order giả khi có backend — data thật kéo từ server sau login.
+    if (!repo.enabled) _seedSampleOrders();
   }
 
   /// Pull data từ server về local lists. Thay thế toàn bộ cache local.

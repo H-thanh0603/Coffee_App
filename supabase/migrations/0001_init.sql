@@ -209,6 +209,15 @@ alter table public.vouchers enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
 alter table public.notifications enable row level security;
+create or replace function public.is_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin' and p.active);
+$$;
+
 
 -- catalog + staff data: authenticated staff read; anonymous read for customer catalog
 drop policy if exists "staff read all" on public.profiles;
@@ -241,47 +250,47 @@ drop policy if exists "staff read all" on public.notifications;
 create policy "staff read all" on public.notifications for select to authenticated using (true);
 
 drop policy if exists "admin write categories" on public.categories;
-create policy "admin write categories" on public.categories for insert to authenticated with check (true);
+create policy "admin write categories" on public.categories for insert to authenticated with check (is_admin());
 drop policy if exists "admin write categories" on public.categories;
-create policy "admin write categories" on public.categories for update to authenticated using (true) with check (true);
+create policy "admin write categories" on public.categories for update to authenticated using (is_admin()) with check (is_admin());
 drop policy if exists "admin write categories" on public.categories;
-create policy "admin write categories" on public.categories for delete to authenticated using (true);
+create policy "admin write categories" on public.categories for delete to authenticated using (is_admin());
 drop policy if exists "admin write toppings" on public.toppings;
-create policy "admin write toppings" on public.toppings for insert to authenticated with check (true);
+create policy "admin write toppings" on public.toppings for insert to authenticated with check (is_admin());
 drop policy if exists "admin write toppings" on public.toppings;
-create policy "admin write toppings" on public.toppings for update to authenticated using (true) with check (true);
+create policy "admin write toppings" on public.toppings for update to authenticated using (is_admin()) with check (is_admin());
 drop policy if exists "admin write toppings" on public.toppings;
-create policy "admin write toppings" on public.toppings for delete to authenticated using (true);
+create policy "admin write toppings" on public.toppings for delete to authenticated using (is_admin());
 drop policy if exists "admin write products" on public.products;
-create policy "admin write products" on public.products for insert to authenticated with check (true);
+create policy "admin write products" on public.products for insert to authenticated with check (is_admin());
 drop policy if exists "admin write products" on public.products;
-create policy "admin write products" on public.products for update to authenticated using (true) with check (true);
+create policy "admin write products" on public.products for update to authenticated using (is_admin()) with check (is_admin());
 drop policy if exists "admin write products" on public.products;
-create policy "admin write products" on public.products for delete to authenticated using (true);
+create policy "admin write products" on public.products for delete to authenticated using (is_admin());
 drop policy if exists "admin write ingredients" on public.ingredients;
-create policy "admin write ingredients" on public.ingredients for insert to authenticated with check (true);
+create policy "admin write ingredients" on public.ingredients for insert to authenticated with check (is_admin());
 drop policy if exists "admin write ingredients" on public.ingredients;
-create policy "admin write ingredients" on public.ingredients for update to authenticated using (true) with check (true);
+create policy "admin write ingredients" on public.ingredients for update to authenticated using (is_admin()) with check (is_admin());
 drop policy if exists "admin write ingredients" on public.ingredients;
-create policy "admin write ingredients" on public.ingredients for delete to authenticated using (true);
+create policy "admin write ingredients" on public.ingredients for delete to authenticated using (is_admin());
 drop policy if exists "admin write recipes" on public.recipes;
-create policy "admin write recipes" on public.recipes for insert to authenticated with check (true);
+create policy "admin write recipes" on public.recipes for insert to authenticated with check (is_admin());
 drop policy if exists "admin write recipes" on public.recipes;
-create policy "admin write recipes" on public.recipes for update to authenticated using (true) with check (true);
+create policy "admin write recipes" on public.recipes for update to authenticated using (is_admin()) with check (is_admin());
 drop policy if exists "admin write recipes" on public.recipes;
-create policy "admin write recipes" on public.recipes for delete to authenticated using (true);
+create policy "admin write recipes" on public.recipes for delete to authenticated using (is_admin());
 drop policy if exists "admin write recipe_items" on public.recipe_items;
-create policy "admin write recipe_items" on public.recipe_items for insert to authenticated with check (true);
+create policy "admin write recipe_items" on public.recipe_items for insert to authenticated with check (is_admin());
 drop policy if exists "admin write recipe_items" on public.recipe_items;
-create policy "admin write recipe_items" on public.recipe_items for update to authenticated using (true) with check (true);
+create policy "admin write recipe_items" on public.recipe_items for update to authenticated using (is_admin()) with check (is_admin());
 drop policy if exists "admin write recipe_items" on public.recipe_items;
-create policy "admin write recipe_items" on public.recipe_items for delete to authenticated using (true);
+create policy "admin write recipe_items" on public.recipe_items for delete to authenticated using (is_admin());
 drop policy if exists "admin write vouchers" on public.vouchers;
-create policy "admin write vouchers" on public.vouchers for insert to authenticated with check (true);
+create policy "admin write vouchers" on public.vouchers for insert to authenticated with check (is_admin());
 drop policy if exists "admin write vouchers" on public.vouchers;
-create policy "admin write vouchers" on public.vouchers for update to authenticated using (true) with check (true);
+create policy "admin write vouchers" on public.vouchers for update to authenticated using (is_admin()) with check (is_admin());
 drop policy if exists "admin write vouchers" on public.vouchers;
-create policy "admin write vouchers" on public.vouchers for delete to authenticated using (true);
+create policy "admin write vouchers" on public.vouchers for delete to authenticated using (is_admin());
 drop policy if exists "staff write tables" on public.tables;
 create policy "staff write tables" on public.tables for insert to authenticated with check (true);
 drop policy if exists "staff write tables" on public.tables;
