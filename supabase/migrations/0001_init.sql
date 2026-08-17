@@ -7,7 +7,7 @@ create extension if not exists "pgcrypto";
 create extension if not exists "uuid-ossp";
 
 -- ===== PROFILES (auth.users -> role) =====
-create table public.profiles (
+create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text not null,
   email text not null,
@@ -19,7 +19,7 @@ create table public.profiles (
 );
 
 -- ===== CATALOG =====
-create table public.categories (
+create table if not exists public.categories (
   id text primary key,
   name text not null,
   description text not null default '',
@@ -27,14 +27,14 @@ create table public.categories (
   active boolean not null default true
 );
 
-create table public.toppings (
+create table if not exists public.toppings (
   id text primary key,
   name text not null,
   price double precision not null default 0,
   available boolean not null default true
 );
 
-create table public.products (
+create table if not exists public.products (
   id text primary key,
   name text not null,
   description text not null default '',
@@ -50,7 +50,7 @@ create table public.products (
   updated_at timestamptz not null default now()
 );
 
-create table public.tables (
+create table if not exists public.tables (
   id text primary key,
   table_name text not null,
   capacity int not null default 2,
@@ -60,7 +60,7 @@ create table public.tables (
   qr_code_value text
 );
 
-create table public.customers (
+create table if not exists public.customers (
   id text primary key,
   full_name text not null,
   phone text not null,
@@ -75,7 +75,7 @@ create table public.customers (
 );
 
 -- ===== INVENTORY =====
-create table public.ingredients (
+create table if not exists public.ingredients (
   id text primary key,
   name text not null,
   unit text not null,
@@ -89,14 +89,14 @@ create table public.ingredients (
   updated_at timestamptz not null default now()
 );
 
-create table public.recipes (
+create table if not exists public.recipes (
   id text primary key,
   product_id text not null references public.products(id),
   size text not null check (size in ('s','m','l')),
   unique (product_id, size)
 );
 
-create table public.recipe_items (
+create table if not exists public.recipe_items (
   id uuid primary key default uuid_generate_v4(),
   recipe_id text not null references public.recipes(id) on delete cascade,
   ingredient_id text not null references public.ingredients(id),
@@ -105,7 +105,7 @@ create table public.recipe_items (
   unique (recipe_id, ingredient_id)
 );
 
-create table public.stock_transactions (
+create table if not exists public.stock_transactions (
   id text primary key,
   ingredient_id text not null references public.ingredients(id),
   ingredient_name text not null default '',
@@ -118,7 +118,7 @@ create table public.stock_transactions (
 );
 
 -- ===== SALES =====
-create table public.vouchers (
+create table if not exists public.vouchers (
   id text primary key,
   code text not null unique,
   name text not null default '',
@@ -133,7 +133,7 @@ create table public.vouchers (
   active boolean not null default true
 );
 
-create table public.orders (
+create table if not exists public.orders (
   id text primary key,
   order_code text not null,
   table_id text references public.tables(id),
@@ -160,7 +160,7 @@ create table public.orders (
   completed_at timestamptz
 );
 
-create table public.order_items (
+create table if not exists public.order_items (
   id text primary key,
   order_id text not null references public.orders(id) on delete cascade,
   product_id text not null,
@@ -168,7 +168,7 @@ create table public.order_items (
 );
 
 -- ===== NOTIFICATIONS =====
-create table public.notifications (
+create table if not exists public.notifications (
   id text primary key,
   title text not null default '',
   message text not null default '',
@@ -179,7 +179,7 @@ create table public.notifications (
 );
 
 -- ===== ORDER SEQUENCE (server-side code gen) =====
-create table public.order_seq (
+create table if not exists public.order_seq (
   id boolean primary key default true check (id),
   current int not null default 0
 );
@@ -211,50 +211,93 @@ alter table public.order_items enable row level security;
 alter table public.notifications enable row level security;
 
 -- catalog + staff data: authenticated staff read; anonymous read for customer catalog
+drop policy if exists "staff read all" on public.profiles;
 create policy "staff read all" on public.profiles for select to authenticated using (true);
+drop policy if exists "staff read all" on public.categories;
 create policy "staff read all" on public.categories for select to authenticated using (true);
+drop policy if exists "staff read all" on public.toppings;
 create policy "staff read all" on public.toppings for select to authenticated using (true);
+drop policy if exists "staff read all" on public.products;
 create policy "staff read all" on public.products for select to authenticated using (true);
+drop policy if exists "staff read all" on public.tables;
 create policy "staff read all" on public.tables for select to authenticated using (true);
+drop policy if exists "staff read all" on public.customers;
 create policy "staff read all" on public.customers for select to authenticated using (true);
+drop policy if exists "staff read all" on public.ingredients;
 create policy "staff read all" on public.ingredients for select to authenticated using (true);
+drop policy if exists "staff read all" on public.recipes;
 create policy "staff read all" on public.recipes for select to authenticated using (true);
+drop policy if exists "staff read all" on public.recipe_items;
 create policy "staff read all" on public.recipe_items for select to authenticated using (true);
+drop policy if exists "staff read all" on public.stock_transactions;
 create policy "staff read all" on public.stock_transactions for select to authenticated using (true);
+drop policy if exists "staff read all" on public.vouchers;
 create policy "staff read all" on public.vouchers for select to authenticated using (true);
+drop policy if exists "staff read all" on public.orders;
 create policy "staff read all" on public.orders for select to authenticated using (true);
+drop policy if exists "staff read all" on public.order_items;
 create policy "staff read all" on public.order_items for select to authenticated using (true);
+drop policy if exists "staff read all" on public.notifications;
 create policy "staff read all" on public.notifications for select to authenticated using (true);
 
-create policy "admin write categories" on public.categories for insert to authenticated using (true) with check (true);
+drop policy if exists "admin write categories" on public.categories;
+create policy "admin write categories" on public.categories for insert to authenticated with check (true);
+drop policy if exists "admin write categories" on public.categories;
 create policy "admin write categories" on public.categories for update to authenticated using (true) with check (true);
+drop policy if exists "admin write categories" on public.categories;
 create policy "admin write categories" on public.categories for delete to authenticated using (true);
-create policy "admin write toppings" on public.toppings for insert to authenticated using (true) with check (true);
+drop policy if exists "admin write toppings" on public.toppings;
+create policy "admin write toppings" on public.toppings for insert to authenticated with check (true);
+drop policy if exists "admin write toppings" on public.toppings;
 create policy "admin write toppings" on public.toppings for update to authenticated using (true) with check (true);
+drop policy if exists "admin write toppings" on public.toppings;
 create policy "admin write toppings" on public.toppings for delete to authenticated using (true);
-create policy "admin write products" on public.products for insert to authenticated using (true) with check (true);
+drop policy if exists "admin write products" on public.products;
+create policy "admin write products" on public.products for insert to authenticated with check (true);
+drop policy if exists "admin write products" on public.products;
 create policy "admin write products" on public.products for update to authenticated using (true) with check (true);
+drop policy if exists "admin write products" on public.products;
 create policy "admin write products" on public.products for delete to authenticated using (true);
-create policy "admin write ingredients" on public.ingredients for insert to authenticated using (true) with check (true);
+drop policy if exists "admin write ingredients" on public.ingredients;
+create policy "admin write ingredients" on public.ingredients for insert to authenticated with check (true);
+drop policy if exists "admin write ingredients" on public.ingredients;
 create policy "admin write ingredients" on public.ingredients for update to authenticated using (true) with check (true);
+drop policy if exists "admin write ingredients" on public.ingredients;
 create policy "admin write ingredients" on public.ingredients for delete to authenticated using (true);
-create policy "admin write recipes" on public.recipes for insert to authenticated using (true) with check (true);
+drop policy if exists "admin write recipes" on public.recipes;
+create policy "admin write recipes" on public.recipes for insert to authenticated with check (true);
+drop policy if exists "admin write recipes" on public.recipes;
 create policy "admin write recipes" on public.recipes for update to authenticated using (true) with check (true);
+drop policy if exists "admin write recipes" on public.recipes;
 create policy "admin write recipes" on public.recipes for delete to authenticated using (true);
-create policy "admin write recipe_items" on public.recipe_items for insert to authenticated using (true) with check (true);
+drop policy if exists "admin write recipe_items" on public.recipe_items;
+create policy "admin write recipe_items" on public.recipe_items for insert to authenticated with check (true);
+drop policy if exists "admin write recipe_items" on public.recipe_items;
 create policy "admin write recipe_items" on public.recipe_items for update to authenticated using (true) with check (true);
+drop policy if exists "admin write recipe_items" on public.recipe_items;
 create policy "admin write recipe_items" on public.recipe_items for delete to authenticated using (true);
-create policy "admin write vouchers" on public.vouchers for insert to authenticated using (true) with check (true);
+drop policy if exists "admin write vouchers" on public.vouchers;
+create policy "admin write vouchers" on public.vouchers for insert to authenticated with check (true);
+drop policy if exists "admin write vouchers" on public.vouchers;
 create policy "admin write vouchers" on public.vouchers for update to authenticated using (true) with check (true);
+drop policy if exists "admin write vouchers" on public.vouchers;
 create policy "admin write vouchers" on public.vouchers for delete to authenticated using (true);
-create policy "staff write tables" on public.tables for insert to authenticated using (true) with check (true);
+drop policy if exists "staff write tables" on public.tables;
+create policy "staff write tables" on public.tables for insert to authenticated with check (true);
+drop policy if exists "staff write tables" on public.tables;
 create policy "staff write tables" on public.tables for update to authenticated using (true) with check (true);
-create policy "staff write customers" on public.customers for insert to authenticated using (true) with check (true);
+drop policy if exists "staff write customers" on public.customers;
+create policy "staff write customers" on public.customers for insert to authenticated with check (true);
+drop policy if exists "staff write customers" on public.customers;
 create policy "staff write customers" on public.customers for update to authenticated using (true) with check (true);
-create policy "staff write orders" on public.orders for insert to authenticated using (true) with check (true);
+drop policy if exists "staff write orders" on public.orders;
+create policy "staff write orders" on public.orders for insert to authenticated with check (true);
+drop policy if exists "staff write orders" on public.orders;
 create policy "staff write orders" on public.orders for update to authenticated using (true) with check (true);
-create policy "staff write order_items" on public.order_items for insert to authenticated using (true) with check (true);
-create policy "staff write notifications" on public.notifications for insert to authenticated using (true) with check (true);
+drop policy if exists "staff write order_items" on public.order_items;
+create policy "staff write order_items" on public.order_items for insert to authenticated with check (true);
+drop policy if exists "staff write notifications" on public.notifications;
+create policy "staff write notifications" on public.notifications for insert to authenticated with check (true);
 
 -- ===== SEED DATA =====
 
