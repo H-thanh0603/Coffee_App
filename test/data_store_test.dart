@@ -364,6 +364,104 @@ void main() {
       );
     });
 
+    test('mergeTables giữ lại điểm giảm giá của 2 đơn gốc', () {
+      final tA = store.tables[0];
+      final tB = store.tables[1];
+      final cashier = _cashier(store)!;
+      final item = OrderItem(
+          id: 'm1', productId: store.products.first.id, productName: 'P',
+          size: DrinkSize.m, unitPrice: 100000, quantity: 1);
+      final oA = store.createOrder(
+          cashier: cashier, items: [item], orderType: OrderType.dineIn,
+          tableId: tA.id, pointsUsed: 100, pointsDiscount: 10000);
+      final oB = store.createOrder(
+          cashier: cashier, items: [item], orderType: OrderType.dineIn,
+          tableId: tB.id, pointsUsed: 50, pointsDiscount: 5000);
+
+      store.mergeTables(tA.id, tB.id);
+
+      final merged = store.orders.firstWhere(
+          (o) => o.id == store.findTable(tB.id)!.currentOrderId);
+      expect(merged.pointsUsed, 150);
+      expect(merged.pointsDiscount, 15000);
+      final expectedTotal = (oA.subtotal + oB.subtotal) - 15000;
+      expect(merged.total, closeTo(expectedTotal, 0.001));
+    });
+
+    test('cancelOrder: hoàn kho + hoàn voucher lượt dùng', () {
+      final cashier = _cashier(store)!;
+      final cust = store.customers.first;
+      cust.addPoints(100);
+      final v = store.vouchers.first;
+      v.usedCount = 1;
+      final table = store.tables.first;
+      final item = OrderItem(
+          id: 'cancel1', productId: store.products.first.id, productName: 'P',
+          size: DrinkSize.m, unitPrice: 10000, quantity: 1);
+      final order = store.createOrder(
+        cashier: cashier, items: [item], orderType: OrderType.dineIn,
+        tableId: table.id, customerId: cust.id, voucher: v);
+      final ingId =
+          store.findRecipe(item.productId, item.size)!.items.first.ingredientId;
+      final stockBeforeConsume =
+          store.findIngredient(ingId)!.currentStock;
+      store.updateOrderStatus(order.id, OrderStatus.preparing); // trừ kho
+      final stockAfterConsume = store.findIngredient(ingId)!.currentStock;
+      expect(stockAfterConsume, lessThan(stockBeforeConsume));
+
+      store.cancelOrder(order.id);
+
+      // kho phải hoàn lại đúng về mức trước khi trừ
+      expect(store.findIngredient(ingId)!.currentStock,
+          closeTo(stockBeforeConsume, 0.001));
+      // set 1 + createOrder cộng 1 = 2, cancelOrder hoàn 1 => 1
+      expect(v.usedCount, 1);
+      expect(store.findTable(table.id)!.status, TableStatus.empty);
+    });
+
+    test('payOrder: double-pay không cộng điểm 2 lần', () {
+      final cust = store.customers.first;
+      final cashier = _cashier(store)!;
+      final order = store.createOrder(
+        cashier: cashier,
+        items: [
+          OrderItem(
+              id: 'dp1',
+              productId: store.products.first.id,
+              productName: 'P',
+              size: DrinkSize.m,
+              unitPrice: 10000,
+              quantity: 1),
+        ],
+        orderType: OrderType.takeaway,
+        customerId: cust.id,
+      );
+      final pointsBefore = cust.points;
+      store.payOrder(order.id, PaymentMethod.cash);
+      store.payOrder(order.id, PaymentMethod.cash); // lần 2 bị chặn
+      final paid = store.orders.firstWhere((o) => o.id == order.id);
+      expect(paid.paymentStatus, PaymentStatus.paid);
+      expect(cust.points, pointsBefore + (paid.total / 10000).floor());
+    });
+
+    test('payOrder: điểm khách không bị âm khi dùng quá số có', () {
+      final cust = store.customers.first;
+      cust.addPoints(100); // chỉ có 100 điểm
+      const ptsUsed = 200; // nhưng cart cho dùng 200 (bug cũ)
+      final cashier = _cashier(store)!;
+      final item = OrderItem(
+          id: 'neg1', productId: store.products.first.id, productName: 'P',
+          size: DrinkSize.m, unitPrice: 100000, quantity: 1);
+      final order = store.createOrder(
+        cashier: cashier, items: [item], orderType: OrderType.takeaway,
+        customerId: cust.id, pointsUsed: ptsUsed,
+        pointsDiscount: ((ptsUsed ~/ 100) * 10000).toDouble());
+
+      store.payOrder(order.id, PaymentMethod.cash);
+
+      expect(cust.points, greaterThanOrEqualTo(0));
+    });
+
     test('dùng điểm giảm giá: total trừ điểm + payOrder trừ điểm khách', () {
       final cust = store.customers.first;
       cust.addPoints(300); // đủ 300 điểm

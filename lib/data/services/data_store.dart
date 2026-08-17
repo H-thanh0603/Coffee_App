@@ -62,6 +62,10 @@ class DataStore extends ChangeNotifier {
       _checkSlowOrderAlerts();
       return;
     }
+    // Decode thất bại (schema cũ/hỏng) -> giữ backup trước khi seed đè
+    if (raw != null && raw.isNotEmpty) {
+      await prefs.setString('$storageKey.bak_${DateTime.now().millisecondsSinceEpoch}', raw);
+    }
     _seed();
     _checkVoucherAlerts();
     _checkSlowOrderAlerts();
@@ -501,6 +505,7 @@ class DataStore extends ChangeNotifier {
     final i = orders.indexWhere((o) => o.id == orderId);
     if (i < 0) return;
     final o = orders[i];
+    if (o.paymentStatus == PaymentStatus.paid) return; // chống double-pay
     final updated = o.copyWith(
       paymentStatus: PaymentStatus.paid,
       paymentMethod: method,
@@ -520,8 +525,9 @@ class DataStore extends ChangeNotifier {
       final c = findCustomer(updated.customerId!);
       if (c != null) {
         final earned = (updated.total / 10000).floor();
-        // cộng điểm mua + trừ điểm đã dùng để giảm giá
-        c.addPoints(earned - updated.pointsUsed);
+        // điểm khách dùng không vượt quá điểm đang có, đảm bảo không âm
+        final used = updated.pointsUsed.clamp(0, c.points).toInt();
+        c.addPoints(earned - used);
         c.addOrder(updated.total);
       }
     }
@@ -573,7 +579,12 @@ class DataStore extends ChangeNotifier {
     final mergedItems = [...toOrder.items, ...fromOrder.items];
     final subtotal = toOrder.subtotal + fromOrder.subtotal;
     final discount = toOrder.discount + fromOrder.discount;
-    final total = (subtotal - discount).clamp(0.0, double.infinity).toDouble();
+    final pointsDiscount = toOrder.pointsDiscount + fromOrder.pointsDiscount;
+    final pointsUsed = toOrder.pointsUsed + fromOrder.pointsUsed;
+    // tổng đã trừ voucher + điểm của 2 đơn gốc
+    final total = (subtotal - discount - pointsDiscount)
+        .clamp(0.0, double.infinity)
+        .toDouble();
 
     orderSeq += 1;
     final merged = AppOrder(
@@ -589,6 +600,8 @@ class DataStore extends ChangeNotifier {
       items: mergedItems,
       subtotal: subtotal,
       discount: discount,
+      pointsUsed: pointsUsed,
+      pointsDiscount: pointsDiscount,
       voucherCode: toOrder.voucherCode,
       total: total,
       note: (toOrder.note.isNotEmpty ? toOrder.note + ' ' : '') +
@@ -625,6 +638,7 @@ class DataStore extends ChangeNotifier {
     final i = orders.indexWhere((o) => o.id == orderId);
     if (i < 0) return;
     final o = orders[i];
+    if (o.orderStatus == OrderStatus.cancelled) return; // chống cancel 2 lần
     orders[i] = o.copyWith(orderStatus: OrderStatus.cancelled);
     if (o.tableId != null) {
       final tbl = findTable(o.tableId!);
@@ -632,6 +646,33 @@ class DataStore extends ChangeNotifier {
         tbl.status = TableStatus.empty;
         tbl.currentOrderId = null;
       }
+    }
+    // Hoàn lại nguyên liệu đã trừ kho (consumeRecipe chạy lúc chuyển preparing)
+    // copy list: tránh concurrent-modification khi thêm tx hoàn kho vào stockTxs
+    final consumed = stockTxs
+        .where((t) =>
+            t.type == StockTxType.consumed && t.note.contains(o.orderCode))
+        .toList();
+    for (final t in consumed) {
+      final ing = findIngredient(t.ingredientId);
+      if (ing != null) {
+        ing.currentStock += t.quantity;
+        stockTxs.add(StockTransaction(
+          id: const Uuid().v4(),
+          ingredientId: ing.id,
+          ingredientName: ing.name,
+          type: StockTxType.inbound,
+          quantity: t.quantity,
+          unit: t.unit,
+          note: 'Hoàn kho khi hủy ' + o.orderCode,
+          createdBy: 'system',
+        ));
+      }
+    }
+    // Hoàn lại lượt dùng voucher
+    if (o.voucherCode != null && o.voucherCode!.isNotEmpty) {
+      final v = findVoucherByCode(o.voucherCode!);
+      if (v != null && v.usedCount > 0) v.usedCount -= 1;
     }
     notifyListeners();
   }
