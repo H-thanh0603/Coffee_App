@@ -44,6 +44,8 @@ class AuthProvider extends ChangeNotifier {
         }
         _currentUser = appUser;
         notifyListeners();
+        // Kéo catalog + data từ server thay cache local
+        await _store.refreshFromServer();
         return null;
       } on sb.AuthException catch (e) {
         return _friendlyAuthError(e.message);
