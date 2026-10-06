@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/theme_provider.dart';
 import '../../core/widgets/app_drawer.dart';
+import '../pos/qr_bank_form.dart';
+import '../pos/vietqr.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -39,6 +41,11 @@ class SettingsScreen extends StatelessWidget {
           ]),
         ),
         const SizedBox(height: 16),
+        const Text('Thanh toán QR',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+        const SizedBox(height: 12),
+        const _QrBankTile(),
+        const SizedBox(height: 16),
         Card(
           child: ListTile(
             leading: const Icon(Icons.info_outline, color: AppColors.primary),
@@ -70,5 +77,45 @@ class SettingsScreen extends StatelessWidget {
       case ThemeMode.dark:
         return Icons.dark_mode;
     }
+  }
+}
+
+/// Dòng cấu hình TK nhận VietQR trong Cài đặt (mở form + hiện STK đã lưu).
+class _QrBankTile extends StatefulWidget {
+  const _QrBankTile();
+  @override
+  State<_QrBankTile> createState() => _QrBankTileState();
+}
+
+class _QrBankTileState extends State<_QrBankTile> {
+  ShopBank? _bank;
+
+  @override
+  void initState() {
+    super.initState();
+    ShopBank.load().then((b) {
+      if (mounted) setState(() => _bank = b);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = _bank;
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.qr_code, color: AppColors.primary),
+        title: const Text('Tài khoản nhận QR'),
+        subtitle: Text(b == null || !b.isConfigured
+            ? 'Chưa cấu hình'
+            : b.bankCode + ' • ' + b.account),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () async {
+          await Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const QrBankForm()));
+          final saved = await ShopBank.load();
+          if (mounted) setState(() => _bank = saved);
+        },
+      ),
+    );
   }
 }

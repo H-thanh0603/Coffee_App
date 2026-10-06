@@ -3,8 +3,10 @@
 -- Demo password: 123456 cho mọi user (seed qua crypt).
 
 -- ===== EXTENSIONS =====
-create extension if not exists "pgcrypto";
-create extension if not exists "uuid-ossp";
+-- Supabase cài extension vào schema `extensions` (không nằm trong search_path
+-- mặc định) nên mọi hàm phải gọi kèm schema. gen_random_uuid() là hàm lõi
+-- Postgres 13+, không cần extension nào.
+create extension if not exists "pgcrypto" with schema extensions;
 
 -- ===== PROFILES (auth.users -> role) =====
 create table if not exists public.profiles (
@@ -97,7 +99,7 @@ create table if not exists public.recipes (
 );
 
 create table if not exists public.recipe_items (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   recipe_id text not null references public.recipes(id) on delete cascade,
   ingredient_id text not null references public.ingredients(id),
   quantity double precision not null default 0,
@@ -183,7 +185,7 @@ create table if not exists public.order_seq (
   id boolean primary key default true check (id),
   current int not null default 0
 );
-insert into public.order_seq (current) values (0);
+insert into public.order_seq (current) values (0) on conflict (id) do nothing;
 
 create or replace function public.next_order_seq()
 returns int
@@ -314,15 +316,15 @@ create policy "staff write notifications" on public.notifications for insert to 
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, created_at)
 values
   ('00000000-0000-0000-0000-000000000001', 'admin@smartcafe.com',
-   crypt('123456', gen_salt('bf')), now(), now()),
+   extensions.crypt('123456', extensions.gen_salt('bf')), now(), now()),
   ('00000000-0000-0000-0000-000000000002', 'cashier@smartcafe.com',
-   crypt('123456', gen_salt('bf')), now(), now()),
+   extensions.crypt('123456', extensions.gen_salt('bf')), now(), now()),
   ('00000000-0000-0000-0000-000000000003', 'barista@smartcafe.com',
-   crypt('123456', gen_salt('bf')), now(), now()),
+   extensions.crypt('123456', extensions.gen_salt('bf')), now(), now()),
   ('00000000-0000-0000-0000-000000000004', 'waiter@smartcafe.com',
-   crypt('123456', gen_salt('bf')), now(), now()),
+   extensions.crypt('123456', extensions.gen_salt('bf')), now(), now()),
   ('00000000-0000-0000-0000-000000000005', 'customer@smartcafe.com',
-   crypt('123456', gen_salt('bf')), now(), now())
+   extensions.crypt('123456', extensions.gen_salt('bf')), now(), now())
 on conflict (id) do nothing;
 
 insert into public.profiles (id, full_name, email, phone, role, avatar_url, active, created_at) values
@@ -330,7 +332,8 @@ insert into public.profiles (id, full_name, email, phone, role, avatar_url, acti
   ('00000000-0000-0000-0000-000000000002', 'Trần Thị Thu Ngân', 'cashier@smartcafe.com', '0902345678', 'cashier', null, true, now()),
   ('00000000-0000-0000-0000-000000000003', 'Lê Pha Chế', 'barista@smartcafe.com', '0903456789', 'barista', null, true, now()),
   ('00000000-0000-0000-0000-000000000004', 'Phạm Phục Vụ', 'waiter@smartcafe.com', '0904567890', 'waiter', null, true, now()),
-  ('00000000-0000-0000-0000-000000000005', 'Khách Vãng Lai', 'customer@smartcafe.com', '0905678901', 'customer', null, true, now());
+  ('00000000-0000-0000-0000-000000000005', 'Khách Vãng Lai', 'customer@smartcafe.com', '0905678901', 'customer', null, true, now())
+on conflict (id) do nothing;
 
 -- Categories
 insert into public.categories (id, name, description, icon) values
@@ -339,7 +342,8 @@ insert into public.categories (id, name, description, icon) values
   ('cat-tea-fruit', 'Trà trái cây', '', '🍑'),
   ('cat-ice-blend', 'Đá xay', '', '🧊'),
   ('cat-soda', 'Soda', '', '🥤'),
-  ('cat-cake', 'Bánh ngọt', '', '🍰');
+  ('cat-cake', 'Bánh ngọt', '', '🍰')
+on conflict (id) do nothing;
 
 -- Toppings
 insert into public.toppings (id, name, price, available) values
@@ -347,7 +351,8 @@ insert into public.toppings (id, name, price, available) values
   ('tp-thach-cafe', 'Thạch cafe', 5000, true),
   ('tp-pudding', 'Pudding', 5000, true),
   ('tp-kem-cheese', 'Kem cheese', 8000, true),
-  ('tp-coffee-jelly', 'Coffee jelly', 5000, true);
+  ('tp-coffee-jelly', 'Coffee jelly', 5000, true)
+on conflict (id) do nothing;
 
 -- Ingredients
 insert into public.ingredients (id, name, unit, current_stock, min_stock, cost_per_unit) values
@@ -364,7 +369,8 @@ insert into public.ingredients (id, name, unit, current_stock, min_stock, cost_p
   ('ing-ly-m', 'Ly M', 'cái', 500, 50, 1000),
   ('ing-ly-l', 'Ly L', 'cái', 500, 50, 1200),
   ('ing-ong-hut', 'Ống hút', 'cái', 800, 100, 200),
-  ('ing-nap-ly', 'Nắp ly', 'cái', 800, 100, 300);
+  ('ing-nap-ly', 'Nắp ly', 'cái', 800, 100, 300)
+on conflict (id) do nothing;
 
 -- Tables
 insert into public.tables (id, table_name, capacity, status) values
@@ -372,25 +378,29 @@ insert into public.tables (id, table_name, capacity, status) values
   ('tb-03', 'Bàn 03', 4, 'empty'), ('tb-04', 'Bàn 04', 4, 'empty'),
   ('tb-05', 'Bàn 05', 6, 'empty'), ('tb-06', 'Bàn 06', 2, 'empty'),
   ('tb-07', 'Bàn 07', 2, 'empty'), ('tb-08', 'Bàn 08', 4, 'empty'),
-  ('tb-09', 'Bàn 09', 4, 'empty'), ('tb-10', 'Bàn 10', 6, 'empty');
+  ('tb-09', 'Bàn 09', 4, 'empty'), ('tb-10', 'Bàn 10', 6, 'empty')
+on conflict (id) do nothing;
 
 -- Vouchers
 insert into public.vouchers (id, code, name, discount_type, discount_value, min_order_value, max_discount, start_date, end_date, usage_limit) values
   ('v-km10', 'KM10', 'Giảm 10%', 'percent', 10, 50000, 30000, now() - interval '7 days', now() + interval '23 days', 200),
   ('v-g30', 'G30', 'Giảm 30k', 'amount', 30000, 100000, 0, now() - interval '7 days', now() + interval '53 days', 150),
-  ('v-hs', 'HELLOSUMMER', 'Chào hè', 'percent', 20, 100000, 50000, now() - interval '7 days', now() + interval '83 days', 100);
+  ('v-hs', 'HELLOSUMMER', 'Chào hè', 'percent', 20, 100000, 50000, now() - interval '7 days', now() + interval '83 days', 100)
+on conflict (id) do nothing;
 
 -- Products (subset đủ demo; đủ data seed trong app)
 insert into public.products (id, name, emoji, category_id, base_price, price_by_size, available_topping_ids) values
   ('p-caphe-den', 'Cafe đen', '☕', 'cat-cafe', 25000, '{"s":25000,"m":30000,"l":35000}', '["tp-coffee-jelly","tp-pudding"]'),
   ('p-caphe-sua', 'Cafe sữa', '🥛', 'cat-cafe', 30000, '{"s":30000,"m":35000,"l":40000}', '["tp-coffee-jelly","tp-pudding"]'),
-  ('p-bac-xiu', 'Bạc xỉu', '🤎', 'cat-cafe', 28000, '{"s":28000,"m":33000,"l":38000}', '["tp-coffee-jelly","tp-pudding"]');
+  ('p-bac-xiu', 'Bạc xỉu', '🤎', 'cat-cafe', 28000, '{"s":28000,"m":33000,"l":38000}', '["tp-coffee-jelly","tp-pudding"]')
+on conflict (id) do nothing;
 
 -- Recipes
 insert into public.recipes (id, product_id, size) values
   ('r-caphe-den-m', 'p-caphe-den', 'm'),
   ('r-caphe-den-l', 'p-caphe-den', 'l'),
-  ('r-caphe-sua-m', 'p-caphe-sua', 'm');
+  ('r-caphe-sua-m', 'p-caphe-sua', 'm')
+on conflict (id) do nothing;
 
 insert into public.recipe_items (recipe_id, ingredient_id, quantity, unit) values
   ('r-caphe-den-m', 'ing-cafe-bot', 20, 'g'),
@@ -407,14 +417,16 @@ insert into public.recipe_items (recipe_id, ingredient_id, quantity, unit) value
   ('r-caphe-sua-m', 'ing-sua-dac', 40, 'ml'),
   ('r-caphe-sua-m', 'ing-ly-m', 1, 'cái'),
   ('r-caphe-sua-m', 'ing-ong-hut', 1, 'cái'),
-  ('r-caphe-sua-m', 'ing-nap-ly', 1, 'cái');
+  ('r-caphe-sua-m', 'ing-nap-ly', 1, 'cái')
+on conflict (recipe_id, ingredient_id) do nothing;
 
 -- Customers (demo)
 insert into public.customers (id, full_name, phone, email, points, rank, total_spent, total_orders) values
   ('c-khach-01', 'Nguyễn Văn An', '0912345678', 'an@mail.com', 850, 'gold', 8500000, 42),
   ('c-khach-02', 'Trần Thị Bích', '0912345679', 'bich@mail.com', 420, 'silver', 4200000, 20),
   ('c-khach-03', 'Lê Hoàng Cường', '0912345680', 'cuong@mail.com', 180, 'bronze', 1800000, 9),
-  ('c-khach-04', 'Phạm Minh Dung', '0912345681', 'dung@mail.com', 60, 'bronze', 600000, 3);
+  ('c-khach-04', 'Phạm Minh Dung', '0912345681', 'dung@mail.com', 60, 'bronze', 600000, 3)
+on conflict (id) do nothing;
 
 -- ===== RPC v2 — compound ops (mirror Dart methods, re-check guards) =====
 
@@ -534,7 +546,7 @@ begin
       if found then
         insert into public.stock_transactions
           (id, ingredient_id, ingredient_name, type, quantity, unit, note, created_by)
-        values (uuid_generate_v4()::text, ri.ingredient_id, ing.name, 'consumed',
+        values (gen_random_uuid()::text, ri.ingredient_id, ing.name, 'consumed',
                 used_qty, ri.unit, 'Đơn ' || p_order_code, p_cashier_name);
       end if;
     end loop;
@@ -573,7 +585,7 @@ begin
 
   -- ghi tx hoàn kho (inbound)
   insert into public.stock_transactions (id, ingredient_id, ingredient_name, type, quantity, unit, note, created_by)
-  select uuid_generate_v4()::text, st.ingredient_id, st.ingredient_name, 'inbound',
+  select gen_random_uuid()::text, st.ingredient_id, st.ingredient_name, 'inbound',
          st.quantity, st.unit, 'Hoàn kho khi hủy ' || o.order_code, 'system'
   from public.stock_transactions st
   where st.type = 'consumed' and st.note like '%' || o.order_code || '%';

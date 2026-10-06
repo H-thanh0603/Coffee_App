@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -21,29 +22,71 @@ class SupabaseOp {
 
 /// Writer duy nhất lên Supabase. DataStore giữ sync-cache optimistic,
 /// mỗi mutation enqueue 1 op, drain tuần tự gọi RPC.
+///
+/// Queue bền vững: op fail sau [maxRetries] lần rơi vào dead-letter
+/// ([failedOps]) chứ không bị xóa; DataStore persist cả queue lẫn
+/// dead-letter xuống local db và replay khi mở lại app ([restorePending]).
 class SupabaseRepo {
   final sb.SupabaseClient? client; // null khi chưa có project/key
+  final int maxRetries; // số lần thử lại 1 op khi lỗi (network/vắng máy chủ)
+  final Duration retryDelay; // backoff giữa các lần thử
+
   final List<SupabaseOp> _pending = [];
+  final List<SupabaseOp> _failed = [];
   bool _draining = false;
 
   /// Total ops applied since app start (test spy).
   @visibleForTesting
   int appliedCount = 0;
 
-  /// Total ops that failed and were dropped (test spy).
+  /// Total ops that failed permanently and moved to dead-letter (test spy).
   @visibleForTesting
   int failedCount = 0;
 
-  /// Callback khi 1 op fail sau retries (log / UI hint).
+  /// Callback khi 1 op fail sau retries -> UI cảnh báo.
   void Function(SupabaseOp op, Object error)? onOpFailed;
 
-  SupabaseRepo({this.client, this.onOpFailed});
+  /// Callback khi 1 op áp thành công kèm kết quả RPC
+  /// (vd create_order trả về order_code do server sinh).
+  void Function(SupabaseOp op, Object? result)? onOpApplied;
+
+  /// Callback mỗi khi queue/dead-letter thay đổi -> DataStore persist.
+  void Function()? onQueueChanged;
+
+  /// Realtime channel đang mở (null khi chưa subscribe).
+  sb.RealtimeChannel? _channel;
+
+  /// Test seam: chặn _apply để giả lập thành công/lỗi mà không cần backend.
+  /// Trả null = dùng client thật.
+  @visibleForTesting
+  Future<FakeApplyResult?> Function(SupabaseOp op)? applyOverride;
+
+  SupabaseRepo({
+    this.client,
+    this.maxRetries = 3,
+    this.retryDelay = const Duration(milliseconds: 250),
+  });
 
   bool get enabled => client != null;
+
+  /// Ops đang chờ gửi server.
+  int get pendingCount => _pending.length;
+
+  /// Ops fail sau retries — giữ lại để [retryFailed], không mất dữ liệu.
+  List<SupabaseOp> get failedOps => List.unmodifiable(_failed);
 
   /// Thêm op vào queue, drain async (fire-and-forget).
   void enqueue(SupabaseOp op) {
     _pending.add(op);
+    _drain();
+  }
+
+  /// Đưa các op dead-letter trở lại đầu queue và drain.
+  void retryFailed() {
+    if (_failed.isEmpty) return;
+    _pending.insertAll(0, _failed);
+    _failed.clear();
+    onQueueChanged?.call();
     _drain();
   }
 
@@ -53,13 +96,34 @@ class SupabaseRepo {
     try {
       while (_pending.isNotEmpty) {
         final op = _pending.removeAt(0);
-        final ok = await _apply(op);
-        if (!ok) {
-          failedCount++;
-          onOpFailed?.call(op, Exception('rpc failed'));
-        } else {
-          appliedCount++;
+        var ok = false;
+        Object? lastError;
+        for (var attempt = 0; attempt <= maxRetries; attempt++) {
+          if (attempt > 0 && retryDelay > Duration.zero) {
+            await Future<void>.delayed(retryDelay * attempt);
+          }
+          try {
+            final result = await _apply(op);
+            ok = result.ok;
+            lastError = result.error;
+            if (ok) {
+              if (result.value != null) onOpApplied?.call(op, result.value);
+              break;
+            }
+          } catch (e) {
+            lastError = e;
+          }
         }
+        if (ok) {
+          appliedCount++;
+        } else {
+          // Hết retries: đẩy vào dead-letter thay vì xóa — replay khi thử lại
+          // hoặc khi mở lại app (restorePending).
+          failedCount++;
+          _failed.add(op);
+          onOpFailed?.call(op, lastError ?? Exception('rpc failed'));
+        }
+        onQueueChanged?.call();
       }
     } finally {
       _draining = false;
@@ -69,33 +133,40 @@ class SupabaseRepo {
   String _snake(String s) => s.replaceAllMapped(
       RegExp(r'[A-Z]'), (m) => '_' + m.group(0)!.toLowerCase());
 
-  Future<bool> _apply(SupabaseOp op) async {
+  Future<_ApplyResult> _apply(SupabaseOp op) async {
+    final override = applyOverride;
+    if (override != null) {
+      final fake = await override(op);
+      if (fake == null) return const _ApplyResult.ok(null);
+      return fake.ok
+          ? _ApplyResult.ok(fake.value)
+          : const _ApplyResult.fail('fake failure');
+    }
     final c = client;
-    if (c == null) return true; // no backend configured -> no-op
+    if (c == null) {
+      return const _ApplyResult.ok(null); // no backend configured -> no-op
+    }
     try {
       // record ops: upsert_<table> / delete_<table>
       if (op.type.startsWith('upsert_')) {
         final table = op.type.substring('upsert_'.length);
         await c.from(table).upsert(_rowFor(op));
-        return true;
+        return const _ApplyResult.ok(null);
       }
       if (op.type.startsWith('delete_')) {
         final table = op.type.substring('delete_'.length);
-        await c
-            .from(table)
-            .delete()
-            .eq('id', op.payload['id'] as String);
-        return true;
+        await c.from(table).delete().eq('id', op.payload['id'] as String);
+        return const _ApplyResult.ok(null);
       }
       final fn = _rpcFor(op.type);
       if (fn != null) {
-        await c.rpc(fn, params: _snakeKeys(op.payload));
-        return true;
+        final res = await c.rpc(fn, params: _snakeKeys(op.payload));
+        return _ApplyResult.ok(res);
       }
-      return false;
+      return const _ApplyResult.fail('unknown op type');
     } catch (e) {
       debugPrint('SupabaseRepo: op ${op.type} fail: $e');
-      return false;
+      return _ApplyResult.fail(e);
     }
   }
 
@@ -136,6 +207,8 @@ class SupabaseRepo {
         return 'consume_recipe_v2';
       case 'cancel_order':
         return 'cancel_order_v2';
+      case 'move_order':
+        return 'move_order_v2';
       case 'merge_tables':
         return 'merge_tables_v2';
       case 'save_recipe':
@@ -149,6 +222,36 @@ class SupabaseRepo {
     }
   }
 
+  // ===== REALTIME =====
+  /// Theo dõi thay đổi postgres trên các bảng, đẩy qua [onDirty] ->
+  /// DataStore debounce rồi refresh từ server.
+  void subscribeRealtime(
+    List<String> tables,
+    void Function(String table) onDirty,
+  ) {
+    final c = client;
+    if (c == null || _channel != null) return;
+    final ch = c.channel('smartcafe_rt');
+    for (final t in tables) {
+      ch.onPostgresChanges(
+        event: sb.PostgresChangeEvent.all,
+        schema: 'public',
+        table: t,
+        callback: (sb.PostgresChangePayload payload) => onDirty(t),
+      );
+    }
+    ch.subscribe();
+    _channel = ch;
+  }
+
+  void unsubscribeRealtime() {
+    final ch = _channel;
+    if (ch == null) return;
+    client?.removeChannel(ch);
+    _channel = null;
+  }
+
+  // ===== SERVER PULL =====
   /// Pull toàn bộ data từ server về local lists (refresh manual).
   /// [seedFrom] optional: tự seed nếu DB trống (chưa có migration).
   Future<bool> refresh() async {
@@ -168,15 +271,25 @@ class SupabaseRepo {
         'orders',
         'order_items',
         'notifications',
+        'shifts',
+        'reservations',
       ];
-      final data = <String, List<Map<String, dynamic>>>{};
-      for (final t in tables) {
-        final r = await c.from(t).select().limit(5000);
-        data[t] = (r as List)
-            .map((e) => _camelKeys(Map<String, dynamic>.from(e)))
-            .toList();
-      }
-      _lastPull = data;
+      // ponytail: pull song song thay vì tuần tự; bảng chưa migrate thì
+      // bỏ qua (giữ local) thay vì fail cả pull.
+      final results = await Future.wait(tables.map((t) async {
+        try {
+          final r = await c.from(t).select().limit(5000);
+          return MapEntry(
+              t,
+              (r as List)
+                  .map((e) => _camelKeys(Map<String, dynamic>.from(e)))
+                  .toList());
+        } catch (e) {
+          debugPrint('SupabaseRepo: skip pull $t: $e');
+          return MapEntry(t, <Map<String, dynamic>>[]);
+        }
+      }));
+      _lastPull = Map.fromEntries(results);
       return true;
     } catch (e) {
       debugPrint('SupabaseRepo: refresh fail: $e');
@@ -194,9 +307,8 @@ class SupabaseRepo {
           ? _camelKeys(Map<String, dynamic>.from(v))
           : (v is List
               ? v
-                  .map((e) => e is Map
-                      ? _camelKeys(Map<String, dynamic>.from(e))
-                      : e)
+                  .map((e) =>
+                      e is Map ? _camelKeys(Map<String, dynamic>.from(e)) : e)
                   .toList()
               : v);
     });
@@ -207,8 +319,9 @@ class SupabaseRepo {
 
   Map<String, List<Map<String, dynamic>>>? get lastPull => _lastPull;
 
-  /// Serialize pending ops để persist qua SharedPreferences (offline replay).
-  String encodePending() => jsonEncode(_pending.map((o) => o.toJson()).toList());
+  /// Serialize pending + dead-letter ops để persist (offline replay).
+  String encodePending() =>
+      jsonEncode([..._pending, ..._failed].map((o) => o.toJson()).toList());
 
   void restorePending(String raw) {
     try {
@@ -222,6 +335,27 @@ class SupabaseRepo {
           Map<String, dynamic>.from(m['payload'] as Map),
         ));
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('SupabaseRepo: restorePending fail: $e');
+    }
   }
+}
+
+class _ApplyResult {
+  final bool ok;
+  final Object? value;
+  final Object? error;
+  const _ApplyResult(this.ok, [this.value, this.error]);
+  const _ApplyResult.ok(this.value) : error = null;
+  const _ApplyResult.fail(this.error) : value = null;
+}
+
+/// Kết quả _apply mô phỏng, dùng với [SupabaseRepo.applyOverride] trong test.
+class FakeApplyResult {
+  final bool ok;
+  final Object? value;
+  const FakeApplyResult.ok([this.value]) : ok = true;
+  const FakeApplyResult.fail()
+      : ok = false,
+        value = null;
 }

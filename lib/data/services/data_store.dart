@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -16,9 +17,11 @@ import '../models/order_item.dart';
 import '../models/product.dart';
 import '../models/recipe.dart';
 import '../models/stock_transaction.dart';
+import '../models/table_reservation.dart';
 import '../models/topping.dart';
 import '../models/user.dart';
 import '../models/voucher.dart';
+import '../models/work_shift.dart';
 import '../seed/seed_categories.dart';
 import '../seed/seed_customers.dart';
 import '../seed/seed_ingredients.dart';
@@ -28,6 +31,7 @@ import '../seed/seed_tables.dart';
 import '../seed/seed_toppings.dart';
 import '../seed/seed_users.dart';
 import '../seed/seed_vouchers.dart';
+import 'local_db.dart';
 import 'persistence.dart';
 import 'supabase_repo.dart';
 
@@ -37,8 +41,11 @@ class DataStore extends ChangeNotifier {
   /// Writer lên Supabase. null client = offline/no backend, mọi enqueue no-op.
   final SupabaseRepo repo;
 
-  DataStore({SupabaseRepo? repo})
-      : repo = repo ?? SupabaseRepo();
+  final LocalDb _db;
+
+  DataStore({SupabaseRepo? repo, LocalDb? db})
+      : repo = repo ?? SupabaseRepo(),
+        _db = db ?? LocalDb.create();
   final List<AppUser> users = [];
   final List<ProductCategory> categories = [];
   final List<Topping> toppings = [];
@@ -51,31 +58,137 @@ class DataStore extends ChangeNotifier {
   final List<AppOrder> orders = [];
   final List<StockTransaction> stockTxs = [];
   final List<AppNotification> notifications = [];
+  final List<WorkShift> shifts = [];
+  final List<TableReservation> reservations = [];
 
   static const String storageKey = 'smartcafe_data_v1';
-  SharedPreferences? _prefs;
+  static const String pendingKey = 'smartcafe_pending_ops_v1';
+  Timer? _rtDebounce;
+  bool _rtSubscribed = false;
+
+  /// Lỗi đồng bộ gần nhất (hiện banner UI). null = ổn.
+  String? syncError;
 
   /// Bộ đếm dùng để sinh mã đơn — cần lưu cùng state để không trùng mã.
   int orderSeq = 0;
 
   Future<void> init() async {
-    final prefs = await SharedPreferences.getInstance();
-    _prefs = prefs;
-    final raw = prefs.getString(storageKey);
+    await _db.init();
+    var raw = await _db.read(storageKey);
+    // Migrate bản cũ: snapshot từng nằm trong SharedPreferences
+    if (raw == null || raw.isEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      raw = prefs.getString(storageKey);
+    }
     // Có dữ liệu đã lưu -> khôi phục thay vì seed lại
-    if (raw != null && raw.isNotEmpty && StoreCodec.decode(this, raw)) {
-      _checkVoucherAlerts();
-      _checkSlowOrderAlerts();
-      return;
+    final decoded =
+        raw != null && raw.isNotEmpty && StoreCodec.decode(this, raw);
+    if (!decoded) {
+      // Decode thất bại (schema cũ/hỏng) -> giữ backup trước khi seed đè
+      if (raw != null && raw.isNotEmpty) {
+        await _db.write(
+            '$storageKey.bak_${DateTime.now().millisecondsSinceEpoch}', raw);
+      }
+      _seed();
     }
-    // Decode thất bại (schema cũ/hỏng) -> giữ backup trước khi seed đè
-    if (raw != null && raw.isNotEmpty) {
-      await prefs.setString('$storageKey.bak_${DateTime.now().millisecondsSinceEpoch}', raw);
-    }
-    _seed();
+    pruneOldData();
     _checkVoucherAlerts();
     _checkSlowOrderAlerts();
-    await _persist();
+    checkReservationAlerts();
+
+    // Replay op queue chưa gửi được từ phiên trước
+    var opsRaw = await _db.read(pendingKey);
+    opsRaw ??= await SharedPreferences.getInstance()
+        .then((p) => p.getString(pendingKey));
+    if (opsRaw != null && opsRaw.isNotEmpty) repo.restorePending(opsRaw);
+    repo.onQueueChanged = _persistOps;
+    repo.onOpFailed = _onOpFailed;
+    repo.onOpApplied = _onOpApplied;
+    notifyListeners();
+  }
+
+  void _onOpFailed(SupabaseOp op, Object error) {
+    syncError = 'Không đồng bộ được "${op.type}" lên máy chủ';
+    _addNotification(
+      title: 'Lỗi đồng bộ dữ liệu',
+      message: 'Thao tác ${op.type} chưa ghi được lên máy chủ, '
+          'sẽ tự thử lại. Kiểm tra kết nối rồi bấm "Thử lại".',
+      type: 'sync_failed',
+      role: UserRole.admin,
+    );
+    notifyListeners();
+  }
+
+  void _onOpApplied(SupabaseOp op, Object? result) {
+    // create_order / merge_tables trả về order_code do server sinh
+    if (result is String &&
+        result.isNotEmpty &&
+        (op.type == 'create_order' || op.type == 'merge_tables')) {
+      final i = orders.indexWhere((o) => o.id == op.id);
+      if (i >= 0 && orders[i].orderCode != result) {
+        orders[i] = orders[i].copyWith(orderCode: result);
+      }
+    }
+    if (repo.failedOps.isEmpty && repo.pendingCount == 0) {
+      syncError = null;
+    }
+    notifyListeners();
+  }
+
+  /// Người dùng bấm "Thử lại" trên banner sync: đưa dead-letter về queue.
+  void retryFailedSync() {
+    syncError = null;
+    repo.retryFailed();
+    notifyListeners();
+  }
+
+  /// Ẩn banner cảnh báo (op vẫn nằm trong dead-letter cho lần thử sau).
+  void dismissSyncError() {
+    syncError = null;
+    notifyListeners();
+  }
+
+  /// Bật realtime: server thay đổi -> debounce ngắn -> pull về local.
+  /// Bỏ qua pull khi còn op optimistic chưa gửi (tránh đè state cục bộ).
+  void startRealtime() {
+    if (_rtSubscribed || !repo.enabled) return;
+    _rtSubscribed = true;
+    repo.subscribeRealtime(const [
+      'categories',
+      'toppings',
+      'products',
+      'tables',
+      'customers',
+      'ingredients',
+      'recipes',
+      'recipe_items',
+      'vouchers',
+      'orders',
+      'order_items',
+      'notifications',
+      'shifts',
+      'reservations',
+    ], (_) {
+      _rtDebounce?.cancel();
+      _rtDebounce = Timer(const Duration(milliseconds: 800), () {
+        if (repo.pendingCount > 0) return;
+        refreshFromServer();
+      });
+    });
+  }
+
+  /// Pull data từ server về local lists. Thay thế toàn bộ cache local.
+  /// Trả true nếu pull thành công (data server hợp lệ).
+  Future<bool> refreshFromServer() async {
+    final ok = await repo.refresh();
+    if (!ok) return false;
+    final d = repo.lastPull;
+    if (d == null) return false;
+    _applyPull(d);
+    notifyListeners();
+    // Lần pull đầu thành công = đã có backend -> mở realtime
+    startRealtime();
+    return true;
   }
 
   /// Seed dữ liệu mẫu khi chưa có dữ liệu lưu trước đó.
@@ -93,19 +206,22 @@ class DataStore extends ChangeNotifier {
     if (!repo.enabled) _seedSampleOrders();
   }
 
-  /// Pull data từ server về local lists. Thay thế toàn bộ cache local.
-  /// Trả true nếu pull thành công (data server hợp lệ).
-  Future<bool> refreshFromServer() async {
-    final ok = await repo.refresh();
-    if (!ok) return false;
-    final d = repo.lastPull;
-    if (d == null) return false;
-    _applyPull(d);
-    notifyListeners();
-    return true;
-  }
-
   void _applyPull(Map<String, List<Map<String, dynamic>>> d) {
+    // recipe_items/order_items nằm bảng riêng trên server -> gom theo id cha
+    // trước khi decode (không là recipes/orders pull về mất hết items).
+    final recipeItems = <String, List<Map<String, dynamic>>>{};
+    for (final r in d['recipe_items'] ?? []) {
+      final rid = r['recipeId'] as String?;
+      if (rid == null) continue;
+      (recipeItems[rid] ??= []).add(r);
+    }
+    final orderItems = <String, List<Map<String, dynamic>>>{};
+    for (final r in d['order_items'] ?? []) {
+      final oid = r['orderId'] as String?;
+      final item = r['item'];
+      if (oid == null || item is! Map) continue;
+      (orderItems[oid] ??= []).add(Map<String, dynamic>.from(item));
+    }
     categories
       ..clear()
       ..addAll((d['categories'] ?? []).map(categoryFromJson));
@@ -126,30 +242,114 @@ class DataStore extends ChangeNotifier {
       ..addAll((d['ingredients'] ?? []).map(ingredientFromJson));
     recipes
       ..clear()
-      ..addAll((d['recipes'] ?? []).map(recipeFromJson));
+      ..addAll((d['recipes'] ?? []).map((m) => recipeFromJson({
+            ...m,
+            'items': (recipeItems[m['id']] ?? [])
+                .map((ri) => {
+                      'ingredientId': ri['ingredientId'],
+                      'quantity': ri['quantity'],
+                      'unit': ri['unit'],
+                    })
+                .toList(),
+          })));
     vouchers
       ..clear()
       ..addAll((d['vouchers'] ?? []).map(voucherFromJson));
     orders
       ..clear()
-      ..addAll((d['orders'] ?? []).map(orderFromJson));
+      ..addAll((d['orders'] ?? []).map((m) => orderFromJson({
+            ...m,
+            'items': orderItems[m['id']] ?? [],
+          })));
+    notifications
+      ..clear()
+      ..addAll((d['notifications'] ?? []).map(notificationFromJson));
+    // shifts/reservations: merge theo id thay vì thay thế — server chưa
+    // migrate (pull rỗng) không được xóa trắng dữ liệu local.
+    for (final s in (d['shifts'] ?? []).map(shiftFromJson)) {
+      final i = shifts.indexWhere((e) => e.id == s.id);
+      if (i < 0) {
+        shifts.add(s);
+      } else if (s.clockOut != null) {
+        shifts[i] = s;
+      }
+    }
+    for (final r in (d['reservations'] ?? []).map(reservationFromJson)) {
+      final i = reservations.indexWhere((e) => e.id == r.id);
+      if (i < 0) {
+        reservations.add(r);
+      } else {
+        reservations[i] = r;
+      }
+    }
+    pruneOldData();
+    syncOrderSeq();
   }
 
-  /// Lưu toàn bộ state xuống SharedPreferences.
+  /// Đồng bộ orderSeq với mã lớn nhất đang có để không trùng mã đơn
+  /// khi có backend (server sinh code từ order_seq riêng, client sinh tạm).
+  /// Public để test và tái dùng sau decode/pull.
+  void syncOrderSeq() {
+    var max = orderSeq;
+    for (final o in orders) {
+      final m = RegExp(r'OD\d{4}(\d+)').firstMatch(o.orderCode);
+      if (m != null) {
+        final n = int.tryParse(m.group(1)!);
+        if (n != null && n > max) max = n;
+      }
+    }
+    orderSeq = max;
+  }
+
+  /// Cắt dữ liệu cũ để snapshot JSON khỏi phình vô hạn:
+  /// giữ đơn chưa xong + đơn 90 ngày gần nhất, stockTxs 2000 dòng mới nhất.
+  /// Gọi sau init decode và sau mỗi pull server.
+  void pruneOldData() {
+    final cutoff = DateTime.now().subtract(const Duration(days: 90));
+    orders.removeWhere((o) =>
+        (o.orderStatus == OrderStatus.paid ||
+            o.orderStatus == OrderStatus.cancelled) &&
+        o.updatedAt.isBefore(cutoff));
+    if (stockTxs.length > 2000) {
+      stockTxs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      stockTxs.removeRange(2000, stockTxs.length);
+    }
+  }
+
+  Timer? _persistDebounce;
+
+  /// Lưu toàn bộ state xuống local db (SQLite/prefs tuỳ nền).
   Future<void> _persist() async {
-    final prefs = _prefs;
-    if (prefs == null) return;
     try {
-      await prefs.setString(storageKey, StoreCodec.encode(this));
-    } catch (_) {
-      // Persistence là phụ trợ - fail im lặng không làm hỏng app
+      await _db.write(storageKey, StoreCodec.encode(this));
+    } catch (e) {
+      debugPrint('DataStore: persist fail: $e');
+    }
+  }
+
+  /// Persist op queue (pending + dead-letter) để replay offline.
+  Future<void> _persistOps() async {
+    try {
+      await _db.write(pendingKey, repo.encodePending());
+    } catch (e) {
+      debugPrint('DataStore: persist ops fail: $e');
     }
   }
 
   @override
   void notifyListeners() {
     super.notifyListeners();
-    unawaited(_persist());
+    // ponytail: debounce full-snapshot persist 500ms (notify rất dày ở
+    // POS/barista); tách store nhỏ hơn khi snapshot tiến gần ~1MB.
+    _persistDebounce?.cancel();
+    _persistDebounce = Timer(const Duration(milliseconds: 500), _persist);
+  }
+
+  @override
+  void dispose() {
+    _persistDebounce?.cancel();
+    _rtDebounce?.cancel();
+    super.dispose();
   }
 
   // ===== REPO HELPERS =====
@@ -177,13 +377,8 @@ class DataStore extends ChangeNotifier {
   void _enqueue(SupabaseOp op) => repo.enqueue(op);
 
   // ===== USER =====
-  AppUser? findUserByEmail(String email) {
-    try {
-      return users.firstWhere((u) => u.email == email);
-    } catch (_) {
-      return null;
-    }
-  }
+  AppUser? findUserByEmail(String email) =>
+      users.firstWhereOrNull((u) => u.email == email);
 
   void addUser(AppUser u) {
     users.add(u);
@@ -200,6 +395,8 @@ class DataStore extends ChangeNotifier {
 
   void removeUser(String id) {
     users.removeWhere((u) => u.id == id);
+    // Đồng bộ xóa profile lên server (RLS: chỉ admin) để khỏi lệch local/server.
+    _enqueue(SupabaseOp(id, 'delete_profiles', {'id': id}));
     notifyListeners();
   }
 
@@ -370,25 +567,36 @@ class DataStore extends ChangeNotifier {
     return null;
   }
 
-  Customer? findCustomerByPhone(String phone) {
-    try {
-      return customers.firstWhere((c) => c.phone == phone);
-    } catch (_) {
-      return null;
-    }
-  }
+  Customer? findCustomerByPhone(String phone) =>
+      customers.firstWhereOrNull((c) => c.phone == phone);
 
   void addCustomer(Customer c) {
     customers.add(c);
-    _enqueue(SupabaseOp(c.id, 'upsert_customers', {'row': customerToJson(c)}));
+    _enqueue(
+        SupabaseOp(c.id, 'upsert_customers', {'row': _customerPublicRow(c)}));
     notifyListeners();
   }
 
   void updateCustomer(Customer c) {
     final i = customers.indexWhere((e) => e.id == c.id);
     if (i >= 0) customers[i] = c;
-    _enqueue(SupabaseOp(c.id, 'upsert_customers', {'row': customerToJson(c)}));
+    _enqueue(
+        SupabaseOp(c.id, 'upsert_customers', {'row': _customerPublicRow(c)}));
     notifyListeners();
+  }
+
+  /// Client chỉ được ghi các cột hồ sơ. points/total_spent/total_orders/rank
+  /// là số liệu thống kê do server giữ quyền (pay_order_v2) — các cột đó đã
+  /// bị revoke UPDATE/INSERT trên DB, gửi lên chỉ khiến op fail.
+  Map<String, dynamic> _customerPublicRow(Customer c) {
+    final row = customerToJson(c);
+    row
+      ..remove('points')
+      ..remove('totalSpent')
+      ..remove('totalOrders')
+      ..remove('rank')
+      ..remove('createdAt');
+    return row;
   }
 
   // ===== INGREDIENT =====
@@ -489,8 +697,31 @@ class DataStore extends ChangeNotifier {
         .toList();
   }
 
-  /// Trừ kho theo công thức khi đơn được xác nhận pha chế
-  void consumeRecipe(AppOrder order) {
+  /// Trừ kho theo công thức khi đơn được xác nhận pha chế.
+  /// Guard trước khi trừ: thiếu nguyên liệu -> không trừ gì cả, trả false
+  /// để caller giữ nguyên trạng thái (thay vì clamp(0) giấu thiếu hụt).
+  /// Public wrapper giữ API cũ; [updateOrderStatus] dùng [_tryConsumeRecipe]
+  /// trực tiếp để khỏi double-notify/double-persist.
+  bool consumeRecipe(AppOrder order) {
+    final ok = _tryConsumeRecipe(order);
+    notifyListeners();
+    return ok;
+  }
+
+  bool _tryConsumeRecipe(AppOrder order) {
+    final missing = missingIngredients(order.items);
+    if (missing.isNotEmpty) {
+      _addNotification(
+        title: 'Thiếu nguyên liệu',
+        message: 'Đơn ' +
+            order.orderCode +
+            ' thiếu: ' +
+            missing.map((e) => e.key.name).take(3).join(', '),
+        type: 'stock_shortage',
+        role: UserRole.admin,
+      );
+      return false;
+    }
     for (final item in order.items) {
       final r = _recipeFor(item.productId, item.size);
       if (r == null) continue;
@@ -518,27 +749,12 @@ class DataStore extends ChangeNotifier {
       'p_order_code': order.orderCode,
       'p_cashier_name': order.cashierName,
     }));
-    final missing = missingIngredients(order.items);
-    if (missing.isNotEmpty) {
-      _addNotification(
-        title: 'Thiếu nguyên liệu',
-        message: missing.map((e) => e.key.name).take(3).join(', '),
-        type: 'stock_shortage',
-        role: UserRole.admin,
-      );
-    }
-    notifyListeners();
+    return true;
   }
 
   // ===== VOUCHER =====
-  Voucher? findVoucherByCode(String code) {
-    try {
-      return vouchers
-          .firstWhere((v) => v.code.toUpperCase() == code.toUpperCase());
-    } catch (_) {
-      return null;
-    }
-  }
+  Voucher? findVoucherByCode(String code) => vouchers.firstWhereOrNull(
+      (v) => v.code.toUpperCase() == code.toUpperCase());
 
   void addVoucher(Voucher v) {
     vouchers.add(v);
@@ -626,20 +842,28 @@ class DataStore extends ChangeNotifier {
     return order;
   }
 
-  void updateOrderStatus(String orderId, OrderStatus status) {
+  /// Trả false khi bị chặn (thiếu nguyên liệu lúc bắt đầu pha) — đơn giữ
+  /// nguyên trạng thái. Bỏ qua trừ kho nếu đơn đã ở preparing (chống trừ 2 lần).
+  bool updateOrderStatus(String orderId, OrderStatus status) {
     final i = orders.indexWhere((o) => o.id == orderId);
-    if (i < 0) return;
+    if (i < 0) return false;
     final o = orders[i];
+    if (status == OrderStatus.preparing &&
+        o.orderStatus != OrderStatus.preparing) {
+      if (!_tryConsumeRecipe(o)) {
+        _checkSlowOrderAlerts();
+        notifyListeners();
+        return false;
+      }
+    }
     o.orderStatus = status;
     o.updatedAt = DateTime.now();
-    if (status == OrderStatus.preparing) {
-      consumeRecipe(o);
-    }
     if (status == OrderStatus.ready || status == OrderStatus.served) {
       o.completedAt ??= DateTime.now();
     }
     _checkSlowOrderAlerts();
     notifyListeners();
+    return true;
   }
 
   void payOrder(String orderId, PaymentMethod method) {
@@ -692,15 +916,18 @@ class DataStore extends ChangeNotifier {
     }
     orders[i] = o.copyWith(tableId: newT.id, tableName: newT.tableName);
     if (oldT != null) {
-      _enqueue(SupabaseOp(oldT.id, 'upsert_tables', {'row': tableToJson(oldT)}));
+      _enqueue(
+          SupabaseOp(oldT.id, 'upsert_tables', {'row': tableToJson(oldT)}));
     }
     newT.status = TableStatus.serving;
     newT.currentOrderId = orderId;
     _enqueue(SupabaseOp(newT.id, 'upsert_tables', {'row': tableToJson(newT)}));
-    _enqueue(SupabaseOp(
-        o.id,
-        'upsert_orders',
-        {'row': orderToJson(orders[i])..remove('items')}));
+    // Đổi bàn atomic trên server qua move_order_v2 thay vì upsert_orders rời rạc.
+    _enqueue(SupabaseOp(o.id, 'move_order', {
+      'p_order_id': o.id,
+      'p_old_table_id': oldT?.id,
+      'p_new_table_id': newT.id,
+    }));
     _addNotification(
       title: 'Bàn ' + (o.tableName ?? '') + ' → ' + newT.tableName,
       message: 'Đơn ' + o.orderCode + ' đã chuyển bàn',
@@ -718,11 +945,7 @@ class DataStore extends ChangeNotifier {
     if (from == null || to == null) return;
     AppOrder? findOrder(String? orderId) {
       if (orderId == null) return null;
-      try {
-        return orders.firstWhere((o) => o.id == orderId);
-      } catch (_) {
-        return null;
-      }
+      return orders.firstWhereOrNull((o) => o.id == orderId);
     }
 
     final fromOrder = findOrder(from.currentOrderId);
@@ -855,6 +1078,10 @@ class DataStore extends ChangeNotifier {
         targetRole: role,
       ),
     );
+    // ponytail: cap 100 thông báo mới nhất, snapshot JSON khỏi phình vô hạn.
+    if (notifications.length > 100) {
+      notifications.removeRange(100, notifications.length);
+    }
   }
 
   void markNotificationRead(String id) {
@@ -932,6 +1159,163 @@ class DataStore extends ChangeNotifier {
         }
       }
     }
+  }
+
+  // ===== SHIFTS (chấm công đơn giản) =====
+  /// Ca đang mở của user, null nếu chưa vào ca.
+  WorkShift? openShiftFor(String userId) =>
+      shifts.firstWhereOrNull((s) => s.userId == userId && s.isOpen);
+
+  /// Vào ca. Đang có ca mở thì trả về ca đó (không mở chồng).
+  WorkShift clockIn(String userId, String userName) {
+    final open = openShiftFor(userId);
+    if (open != null) return open;
+    final s = WorkShift(id: const Uuid().v4(), userId: userId, userName: userName);
+    shifts.add(s);
+    _enqueue(SupabaseOp(s.id, 'upsert_shifts', {'row': shiftToJson(s)}));
+    notifyListeners();
+    return s;
+  }
+
+  /// Ra ca, trả về thời gian làm. Không có ca mở thì trả Duration.zero.
+  Duration clockOut(String userId) {
+    final open = openShiftFor(userId);
+    if (open == null) return Duration.zero;
+    open.clockOut = DateTime.now();
+    _enqueue(SupabaseOp(open.id, 'upsert_shifts', {'row': shiftToJson(open)}));
+    notifyListeners();
+    return open.worked;
+  }
+
+  /// Doanh thu theo nhân viên trong ca đang mở / ca gần nhất (theo cashierName).
+  double revenueInShift(WorkShift s) {
+    final end = s.clockOut ?? DateTime.now();
+    return paidOrders
+        .where((o) =>
+            o.cashierName == s.userName &&
+            !o.paidAt.isBefore(s.clockIn) &&
+            !o.paidAt.isAfter(end))
+        .fold<double>(0, (sum, o) => sum + o.total);
+  }
+
+  // ===== RESERVATIONS (đặt bàn trước có giờ) =====
+  List<TableReservation> get upcomingReservations => reservations
+      .where((r) => r.status == TableReservationStatus.upcoming)
+      .toList()
+    ..sort((a, b) => a.reservedAt.compareTo(b.reservedAt));
+
+  List<TableReservation> reservationsForTable(String tableId) => reservations
+      .where((r) =>
+          r.tableId == tableId && r.status == TableReservationStatus.upcoming)
+      .toList()
+    ..sort((a, b) => a.reservedAt.compareTo(b.reservedAt));
+
+  /// Đặt bàn trùng giờ (±60 phút) với đơn đã đặt khác thì từ chối.
+  bool addReservation(TableReservation r) {
+    final clash = reservations.any((e) =>
+        e.tableId == r.tableId &&
+        e.status == TableReservationStatus.upcoming &&
+        e.reservedAt.difference(r.reservedAt).abs().inMinutes < 60);
+    if (clash) return false;
+    reservations.add(r);
+    _enqueue(
+        SupabaseOp(r.id, 'upsert_reservations', {'row': reservationToJson(r)}));
+    _addNotification(
+      title: 'Đặt bàn ' + r.tableName,
+      message: r.customerName +
+          ' • ' +
+          r.guests.toString() +
+          ' khách • ' +
+          Fmt.dateTime(r.reservedAt),
+      type: 'reservation_new',
+      role: UserRole.waiter,
+    );
+    notifyListeners();
+    return true;
+  }
+
+  void seatReservation(String id) {
+    final i = reservations.indexWhere((r) => r.id == id);
+    if (i < 0) return;
+    reservations[i].status = TableReservationStatus.seated;
+    _enqueue(SupabaseOp(reservations[i].id, 'upsert_reservations',
+        {'row': reservationToJson(reservations[i])}));
+    setTableStatus(reservations[i].tableId, TableStatus.serving);
+    notifyListeners();
+  }
+
+  void cancelReservation(String id) {
+    final i = reservations.indexWhere((r) => r.id == id);
+    if (i < 0) return;
+    reservations[i].status = TableReservationStatus.cancelled;
+    _enqueue(SupabaseOp(reservations[i].id, 'upsert_reservations',
+        {'row': reservationToJson(reservations[i])}));
+    notifyListeners();
+  }
+
+  /// Quá giờ hẹn 15 phút chưa nhận bàn -> cảnh báo 1 lần cho phục vụ.
+  void checkReservationAlerts() {
+    for (final r in reservations.where((r) => r.isOverdue)) {
+      final exists = notifications.any((n) =>
+          n.type == 'reservation_overdue' && n.message.contains(r.tableName));
+      if (!exists) {
+        _addNotification(
+          title: 'Khách đặt bàn chưa đến',
+          message: r.tableName +
+              ' • ' +
+              r.customerName +
+              ' hẹn ' +
+              Fmt.time(r.reservedAt),
+          type: 'reservation_overdue',
+          role: UserRole.waiter,
+        );
+      }
+    }
+  }
+
+  // ===== TAKEAWAY QUEUE (hàng đợi mang đi) =====
+  /// Đơn mang đi chưa xong, xếp theo giờ tạo (cũ trước để barista ưu tiên).
+  List<AppOrder> get takeawayQueue => orders
+      .where((o) =>
+          o.orderType == OrderType.takeaway &&
+          o.orderStatus != OrderStatus.served &&
+          o.orderStatus != OrderStatus.paid &&
+          o.orderStatus != OrderStatus.cancelled)
+      .toList()
+    ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+  // ===== HOURLY STATS (giờ cao điểm + gợi ý xếp ca) =====
+  /// Số đơn đã thanh toán theo giờ trong [days] ngày gần nhất (0-23).
+  List<int> ordersByHour({int days = 7}) {
+    final counts = List<int>.filled(24, 0);
+    final since = DateTime.now().subtract(Duration(days: days));
+    for (final o in paidOrders.where((o) => o.paidAt.isAfter(since))) {
+      counts[o.paidAt.hour]++;
+    }
+    return counts;
+  }
+
+  /// 3 khung giờ đông nhất (giờ bắt đầu), kèm số đơn trung bình/ngày.
+  List<MapEntry<int, double>> peakHours({int days = 7, int limit = 3}) {
+    final counts = ordersByHour(days: days);
+    final entries = <MapEntry<int, double>>[];
+    for (var h = 0; h < 24; h++) {
+      if (counts[h] > 0) entries.add(MapEntry(h, counts[h] / days));
+    }
+    entries.sort((a, b) => b.value.compareTo(a.value));
+    return entries.take(limit).toList();
+  }
+
+  /// Gợi ý số barista theo giờ cao điểm: mỗi ~8 đơn/giờ cần thêm 1 người.
+  String shiftSuggestion({int days = 7}) {
+    final peaks = peakHours(days: days);
+    if (peaks.isEmpty) return 'Chưa đủ dữ liệu đơn để gợi ý xếp ca.';
+    final top = peaks.first;
+    final need = (top.value / 8).ceil().clamp(1, 5);
+    final range =
+        '${top.key.toString().padLeft(2, '0')}:00–${((top.key + 1) % 24).toString().padLeft(2, '0')}:00';
+    return 'Giờ cao điểm $range (~${top.value.toStringAsFixed(1)} đơn/ngày): '
+        'bố trí $need pha chế trực.';
   }
 
   // ===== STATS =====

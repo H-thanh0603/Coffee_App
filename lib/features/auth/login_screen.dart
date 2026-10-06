@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -5,7 +6,6 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../routes/role_router.dart';
 import 'auth_provider.dart';
-import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,7 +15,9 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _emailCtrl = TextEditingController(text: 'admin@smartcafe.com');
-  final _passCtrl = TextEditingController(text: '123456');
+  // Không prefill mật khẩu trong bản release
+  final _passCtrl =
+      TextEditingController(text: kDebugMode ? kDemoPassword : '');
   String? _error;
   bool _loading = false;
 
@@ -42,7 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _quickLogin(String email) {
     _emailCtrl.text = email;
-    _passCtrl.text = '123456';
+    _passCtrl.text = kDebugMode ? kDemoPassword : '';
     _submit();
   }
 
@@ -83,21 +85,18 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 12),
               TextField(
                 controller: _passCtrl,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Mật khẩu',
-                  prefixIcon: Icon(Icons.lock_outline),
-                  hintText: 'Tài khoản demo: 123456',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  hintText:
+                      kDebugMode ? 'Tài khoản demo: $kDemoPassword' : null,
                 ),
                 obscureText: true,
               ),
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const ForgotPasswordScreen()),
-                  ),
+                  onPressed: () => context.push('/forgot'),
                   child: const Text('Quên mật khẩu?'),
                 ),
               ),
@@ -136,8 +135,11 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 24),
               const Divider(),
               const SizedBox(height: 12),
-              const Text('Tài khoản demo (mật khẩu: 123456)',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
+              Text(
+                  kDebugMode
+                      ? 'Tài khoản demo (mật khẩu: $kDemoPassword)'
+                      : 'Tài khoản demo',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 12),
               _quick('admin@smartcafe.com', 'Admin / Chủ quán', '👨‍💼'),
               _quick('cashier@smartcafe.com', 'Thu ngân', '🧾'),

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -19,8 +20,8 @@ class ThemeProvider extends ChangeNotifier {
         );
         notifyListeners();
       }
-    } catch (_) {
-      // Mặc định system nếu không đọc được
+    } catch (e) {
+      debugPrint('ThemeProvider.load fail: $e');
     }
   }
 
@@ -31,8 +32,8 @@ class ThemeProvider extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_key, mode.name);
-    } catch (_) {
-      // Không lưu được thì vẫn đổi theme trong phiên
+    } catch (e) {
+      debugPrint('ThemeProvider.setMode persist fail: $e');
     }
   }
 }

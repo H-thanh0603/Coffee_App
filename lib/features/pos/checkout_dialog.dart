@@ -7,7 +7,9 @@ import '../../core/utils/formatters.dart';
 import '../../data/services/data_store.dart';
 import '../auth/auth_provider.dart';
 import '../cart/cart_provider.dart';
+import 'qr_bank_form.dart';
 import 'receipt_screen.dart';
+import 'vietqr.dart';
 
 class CheckoutDialog extends StatefulWidget {
   const CheckoutDialog({super.key});
@@ -17,10 +19,18 @@ class CheckoutDialog extends StatefulWidget {
 
 class _CheckoutDialogState extends State<CheckoutDialog> {
   PaymentMethod _method = PaymentMethod.cash;
+  ShopBank? _bank;
+  bool _bankLoaded = false;
 
   @override
   Widget build(BuildContext context) {
     final cart = context.watch<CartProvider>();
+    if (!_bankLoaded) {
+      _bankLoaded = true;
+      ShopBank.load().then((b) {
+        if (mounted) setState(() => _bank = b);
+      });
+    }
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -54,31 +64,7 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                     )),
                 if (_method == PaymentMethod.qr) ...[
                   const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.cardBg,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Column(children: [
-                      Container(
-                        width: 160,
-                        height: 160,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: const Center(
-                            child: Text('🔲', style: TextStyle(fontSize: 80))),
-                      ),
-                      const SizedBox(height: 8),
-                      Text('QR Banking demo',
-                          style: TextStyle(
-                              fontSize: 12, color: AppColors.textSecondary)),
-                    ]),
-                  ),
+                  _QrPayBox(amount: cart.total, bank: _bank),
                 ],
                 const SizedBox(height: 20),
                 Row(children: [
@@ -155,3 +141,79 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
     nav.push(MaterialPageRoute(builder: (_) => ReceiptScreen(order: order)));
   }
 }
+
+/// QR thanh toán đúng số tiền. Chưa cấu hình TK quán -> hiện nút mở Cài đặt.
+class _QrPayBox extends StatefulWidget {
+  final double amount;
+  final ShopBank? bank;
+  const _QrPayBox({required this.amount, required this.bank});
+  @override
+  State<_QrPayBox> createState() => _QrPayBoxState();
+}
+
+class _QrPayBoxState extends State<_QrPayBox> {
+  ShopBank? _bank;
+
+  @override
+  void initState() {
+    super.initState();
+    _bank = widget.bank;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = _bank;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(children: [
+        if (b == null || !b.isConfigured) ...[
+          const Icon(Icons.account_balance, size: 40, color: AppColors.warning),
+          const SizedBox(height: 8),
+          Text('Chưa cấu hình tài khoản nhận tiền',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+          TextButton(
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const QrBankForm()),
+              );
+              final saved = await ShopBank.load();
+              if (mounted) setState(() => _bank = saved);
+            },
+            child: const Text('Cấu hình ngay'),
+          ),
+        ] else ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+              b.imageUrl(widget.amount.round(),
+                  'SMARTCAFE ' + Fmt.money(widget.amount)),
+              width: 200,
+              height: 200,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox(
+                width: 200,
+                height: 200,
+                child: Center(child: Text('Không tải được QR')),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(b.bankCode + ' • ' + b.account,
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w700)),
+          Text(Fmt.money(widget.amount) + ' • Khách quét đúng số tiền',
+              style:
+                  TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        ],
+      ]),
+    );
+  }
+}
+
+

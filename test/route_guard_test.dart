@@ -76,8 +76,10 @@ void main() {
       }
     });
 
-    test('route không tồn tại => không chặn (sẽ rơi vào 404)', () {
-      expect(RouteGuard.allowed('/khong-ton-tai', UserRole.cashier), isTrue);
+    test('route không tồn tại => deny (fail-closed), router cho rơi 404', () {
+      expect(RouteGuard.allowed('/khong-ton-tai', UserRole.cashier), isFalse);
+      expect(RouteGuard.isKnown('/khong-ton-tai'), isFalse);
+      expect(RouteGuard.isKnown('/orders/abc'), isTrue);
     });
 
     test('query string không ảnh hưởng phân quyền', () {

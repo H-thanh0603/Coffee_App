@@ -22,7 +22,7 @@ class _BaristaScreenState extends State<BaristaScreen>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 3, vsync: this);
+    _tab = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -67,6 +67,10 @@ class _BaristaScreenState extends State<BaristaScreen>
             Tab(text: 'Chờ pha (' + pending.length.toString() + ')'),
             Tab(text: 'Đang pha (' + preparing.length.toString() + ')'),
             Tab(text: 'Hoàn thành (' + ready.length.toString() + ')'),
+            Tab(
+                text: 'Mang đi (' +
+                    store.takeawayQueue.length.toString() +
+                    ')'),
           ],
         ),
       ),
@@ -76,6 +80,7 @@ class _BaristaScreenState extends State<BaristaScreen>
           _list(pending, 'pending', store),
           _list(preparing, 'preparing', store),
           _list(ready, 'ready', store),
+          _list(store.takeawayQueue, 'pending', store),
         ],
       ),
     );
@@ -239,8 +244,17 @@ class _OrderCard extends StatelessWidget {
       return Row(children: [
         Expanded(
           child: ElevatedButton.icon(
-            onPressed: () =>
-                store.updateOrderStatus(order.id, OrderStatus.preparing),
+            onPressed: () {
+              final ok =
+                  store.updateOrderStatus(order.id, OrderStatus.preparing);
+              if (!ok) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content:
+                          Text('Thiếu nguyên liệu, chưa thể bắt đầu pha')),
+                );
+              }
+            },
             icon: const Icon(Icons.coffee),
             label: const Text('Bắt đầu pha'),
           ),

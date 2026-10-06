@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/auth/auth_provider.dart';
+import '../features/auth/forgot_password_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/splash_screen.dart';
 import '../features/barista/barista_screen.dart';
@@ -41,14 +42,18 @@ class AppRouter {
         }
         // Chưa restore (đang splash) mà vào màn khác -> giữ splash
         if (!auth.restored) return null;
-        // Chưa login mà vào màn protected -> ép về login
-        if (!loggedIn && loc != '/login') return '/login';
+        // Chưa login mà vào màn protected -> ép về login (/login + /forgot public)
+        if (!loggedIn && loc != '/login' && loc != '/forgot') {
+          return '/login';
+        }
         // Đã login rồi mà còn vào /login -> đẩy về home theo role
         if (loggedIn && loc == '/login') {
           return RoleRouter.homeFor(auth.role!);
         }
+        // Route lạ (không khai báo) -> để rơi vào 404, không đẩy về home
+        if (!RouteGuard.isKnown(loc)) return null;
         // Phân quyền theo role: vào màn không đúng quyền -> về home của role
-        if (loggedIn && !RouteGuard.allowed(loc, auth.role!)) {
+        if (!RouteGuard.allowed(loc, auth.role!)) {
           return RoleRouter.homeFor(auth.role!);
         }
         return null;
@@ -56,6 +61,9 @@ class AppRouter {
       routes: [
         GoRoute(path: '/', builder: (_, __) => const SplashScreen()),
         GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+        GoRoute(
+            path: '/forgot',
+            builder: (_, __) => const ForgotPasswordScreen()),
         GoRoute(path: '/admin', builder: (_, __) => const AdminDashboard()),
         GoRoute(path: '/cashier', builder: (_, __) => const PosScreen()),
         GoRoute(path: '/barista', builder: (_, __) => const BaristaScreen()),

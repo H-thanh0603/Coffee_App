@@ -2,7 +2,7 @@ import '../core/constants/enums.dart';
 
 /// Phân quyền route theo vai trò.
 /// - Mỗi route khai báo danh sách role được phép vào.
-/// - Route không khai báo (không tồn tại) => mặc định cho phép nếu đã đăng nhập.
+/// - Route không khai báo => deny (fail-closed), router để rơi vào 404.
 /// - /profile là route chung cho mọi role đã đăng nhập.
 class RouteGuard {
   static const Map<String, List<UserRole>> _allowed = {
@@ -22,12 +22,27 @@ class RouteGuard {
     '/reports': [UserRole.admin],
     '/employees': [UserRole.admin],
     '/tables': [UserRole.admin, UserRole.cashier, UserRole.waiter],
+    // '/' + '/login' không cần check role trong router (xử lý riêng),
+    // nhưng khai báo ở đây để allowed() cũng đúng khi gọi trực tiếp.
+    '/': UserRole.values,
+    '/login': UserRole.values,
     '/settings': UserRole.values,
     '/profile': UserRole.values,
+    '/forgot': UserRole.values,
   };
+
+  /// Route có tồn tại trong bảng phân quyền không (hỗ trợ path parameter).
+  static bool isKnown(String location) {
+    final path = location.split('?').first;
+    for (final route in _allowed.keys) {
+      if (path == route || path.startsWith(route + '/')) return true;
+    }
+    return false;
+  }
 
   /// Kiểm tra role có được vào [location] hay không.
   /// Hỗ trợ route có path parameter (vd /orders/:id khớp prefix /orders).
+  /// Route lạ => false (deny); caller dùng [isKnown] để phân biệt 404.
   static bool allowed(String location, UserRole role) {
     final path = location.split('?').first;
     for (final entry in _allowed.entries) {
@@ -36,6 +51,6 @@ class RouteGuard {
         return entry.value.contains(role);
       }
     }
-    return true; // route không bị giới hạn
+    return false; // fail-closed: route lạ không cho vào
   }
 }

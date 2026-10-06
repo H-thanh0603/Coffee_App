@@ -62,6 +62,7 @@ class AppOrder {
   DateTime get paidAt => completedAt ?? updatedAt;
 
   AppOrder copyWith({
+    String? orderCode,
     OrderStatus? orderStatus,
     PaymentStatus? paymentStatus,
     PaymentMethod? paymentMethod,
@@ -75,7 +76,7 @@ class AppOrder {
   }) =>
       AppOrder(
         id: id,
-        orderCode: orderCode,
+        orderCode: orderCode ?? this.orderCode,
         tableId: tableId ?? this.tableId,
         tableName: tableName ?? this.tableName,
         customerId: customerId,

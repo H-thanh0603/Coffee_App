@@ -5,6 +5,10 @@ import '../../core/constants/enums.dart';
 import '../../data/models/user.dart';
 import '../../data/services/data_store.dart';
 
+/// Mật khẩu tài khoản demo — đồng bộ với migration 0002 (bcrypt trên server).
+/// Chỉ dùng cho path mock khi KHÔNG có backend và chỉ trong bản debug.
+const String kDemoPassword = 'smartcafe2026';
+
 class AuthProvider extends ChangeNotifier {
   final DataStore _store;
   final sb.SupabaseClient? _client;
@@ -25,7 +29,7 @@ class AuthProvider extends ChangeNotifier {
   bool get _remote => _client != null;
 
   /// Đăng nhập. Có Supabase client → signInWithPassword + fetch profile.
-  /// Không có (offline/demo) → fallback mock password '123456'.
+  /// Không có (debug/demo) → fallback mock [kDemoPassword].
   Future<String?> login(String email, String password) async {
     final normalized = email.trim().toLowerCase();
 
@@ -55,8 +59,13 @@ class AuthProvider extends ChangeNotifier {
       }
     }
 
-    // ==== Mock demo (không có backend) ====
-    if (password != '123456') return 'Mật khẩu không đúng (demo: 123456)';
+    // ==== Mock demo (không có backend) — chỉ tồn tại trong bản debug ====
+    if (kReleaseMode) {
+      return 'Bản phát hành cần cấu hình máy chủ (SUPABASE_URL)';
+    }
+    if (password != kDemoPassword) {
+      return 'Mật khẩu không đúng (demo: $kDemoPassword)';
+    }
     final user = _store.findUserByEmail(normalized);
     if (user == null) return 'Email không tồn tại';
     if (!user.active) return 'Tài khoản đã bị khóa';
@@ -74,6 +83,8 @@ class AuthProvider extends ChangeNotifier {
         final appUser = await _fetchProfile(email);
         if (appUser != null && appUser.active) {
           _currentUser = appUser;
+          // Kéo data + bật realtime cho phiên đã khôi phục
+          await _store.refreshFromServer();
         } else {
           await c.auth.signOut();
           _currentUser = null;
@@ -118,7 +129,7 @@ class AuthProvider extends ChangeNotifier {
       final m = _camel(Map<String, dynamic>.from(r));
       final role = UserRole.values.firstWhere(
         (e) => e.name == m['role'],
-        orElse: () => UserRole.admin,
+        orElse: () => UserRole.customer, // role lạ -> hạ quyền thấp nhất
       );
       return AppUser(
         id: m['id'] as String,
@@ -141,8 +152,10 @@ class AuthProvider extends ChangeNotifier {
     m.forEach((k, v) {
       final parts = k.split('_');
       out[parts.first +
-          parts.skip(1).map((p) => p[0].toUpperCase() + p.substring(1)).join()] =
-          v;
+          parts
+              .skip(1)
+              .map((p) => p[0].toUpperCase() + p.substring(1))
+              .join()] = v;
     });
     return out;
   }

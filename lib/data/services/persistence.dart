@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../../core/constants/enums.dart';
 import '../models/app_notification.dart';
 import '../models/cafe_table.dart';
@@ -11,7 +13,9 @@ import '../models/order_item.dart';
 import '../models/product.dart';
 import '../models/recipe.dart';
 import '../models/stock_transaction.dart';
+import '../models/table_reservation.dart';
 import '../models/topping.dart';
+import '../models/work_shift.dart';
 import '../models/user.dart';
 import '../models/voucher.dart';
 import 'data_store.dart';
@@ -38,6 +42,8 @@ class StoreCodec {
       'orders': s.orders.map(orderToJson).toList(),
       'stockTxs': s.stockTxs.map(stockTxToJson).toList(),
       'notifications': s.notifications.map(notificationToJson).toList(),
+      'shifts': s.shifts.map(shiftToJson).toList(),
+      'reservations': s.reservations.map(reservationToJson).toList(),
     });
   }
 
@@ -82,8 +88,15 @@ class StoreCodec {
       s.notifications
         ..clear()
         ..addAll(_listOf(m['notifications']).map(notificationFromJson));
+      s.shifts
+        ..clear()
+        ..addAll(_listOf(m['shifts']).map(shiftFromJson));
+      s.reservations
+        ..clear()
+        ..addAll(_listOf(m['reservations']).map(reservationFromJson));
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('StoreCodec.decode fail: $e');
       return false;
     }
   }
@@ -462,6 +475,50 @@ StockTransaction stockTxFromJson(Map<String, dynamic> m) => StockTransaction(
       note: m['note'] as String? ?? '',
       createdBy: m['createdBy'] as String? ?? 'system',
       createdAt: _prs(m['createdAt'] as String?),
+    );
+
+// ===== WorkShift (local-only, chưa có bảng server) =====
+Map<String, dynamic> shiftToJson(WorkShift s) => {
+      'id': s.id,
+      'userId': s.userId,
+      'userName': s.userName,
+      'clockIn': _dt(s.clockIn),
+      'clockOut': _dt(s.clockOut),
+    };
+
+WorkShift shiftFromJson(Map<String, dynamic> m) => WorkShift(
+      id: m['id'] as String,
+      userId: m['userId'] as String,
+      userName: m['userName'] as String? ?? '',
+      clockIn: _prs(m['clockIn'] as String?),
+      clockOut: _prs(m['clockOut'] as String?),
+    );
+
+// ===== TableReservation (local-only, chưa có bảng server) =====
+Map<String, dynamic> reservationToJson(TableReservation r) => {
+      'id': r.id,
+      'tableId': r.tableId,
+      'tableName': r.tableName,
+      'customerName': r.customerName,
+      'phone': r.phone,
+      'guests': r.guests,
+      'reservedAt': _dt(r.reservedAt),
+      'status': r.status.name,
+      'note': r.note,
+    };
+
+TableReservation reservationFromJson(Map<String, dynamic> m) =>
+    TableReservation(
+      id: m['id'] as String,
+      tableId: m['tableId'] as String,
+      tableName: m['tableName'] as String? ?? '',
+      customerName: m['customerName'] as String? ?? '',
+      phone: m['phone'] as String? ?? '',
+      guests: _int(m['guests']),
+      reservedAt: _prs(m['reservedAt'] as String?) ?? DateTime.now(),
+      status: _enum(TableReservationStatus.values, m['status'] as String?,
+          TableReservationStatus.upcoming),
+      note: m['note'] as String? ?? '',
     );
 
 // ===== Notification =====

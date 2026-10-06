@@ -146,6 +146,20 @@ enum DiscountType {
   const DiscountType(this.code, this.label);
 }
 
+/// Trạng thái đặt bàn trước
+/// - upcoming: đã đặt, chờ đến giờ
+/// - seated: khách đã nhận bàn
+/// - cancelled: đã hủy
+enum TableReservationStatus {
+  upcoming('upcoming', 'Đã đặt'),
+  seated('seated', 'Đã nhận bàn'),
+  cancelled('cancelled', 'Đã hủy');
+
+  final String code;
+  final String label;
+  const TableReservationStatus(this.code, this.label);
+}
+
 /// Loại giao dịch kho
 enum StockTxType {
   inbound('in', 'Nhập kho'),

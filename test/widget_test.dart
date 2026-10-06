@@ -5,13 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smartcafe/app.dart';
 import 'package:smartcafe/core/theme/theme_provider.dart';
 import 'package:smartcafe/data/services/data_store.dart';
+import 'package:smartcafe/data/services/local_db.dart';
 import 'package:smartcafe/features/auth/auth_provider.dart';
 import 'package:smartcafe/features/cart/cart_provider.dart';
 
 void main() {
   testWidgets('App khởi động đến màn Login (chưa đăng nhập)', (tester) async {
     SharedPreferences.setMockInitialValues({});
-    final store = DataStore();
+    final store = DataStore(db: PrefsLocalDb());
     await store.init();
     final themeProvider = ThemeProvider();
     final auth = AuthProvider(store);

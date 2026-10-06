@@ -24,12 +24,12 @@ App có **5 vai trò** tách biệt với phân quyền rõ ràng và **các ch�
 | Data | In-memory store (mô phỏng Firestore) + persist qua shared_preferences |
 | Utils | uuid, intl, collection |
 
-> Lưu ý: dữ liệu được giữ trong bộ nhớ qua `DataStore` (ChangeNotifier) và **tự lưu xuống SharedPreferences** sau mỗi thao tác — refresh/đóng app không mất dữ liệu. Kiến trúc sẵn sàng swap sang Firestore / REST / SQLite.
+> Lưu ý: dữ liệu được giữ trong bộ nhớ qua `DataStore` (ChangeNotifier) và **tự lưu xuống SQLite (sqflite) / SharedPreferences (web)** sau mỗi thao tác — refresh/đóng app không mất dữ liệu. Kiến trúc sẵn sàng swap sang Firestore / REST / SQLite.
 
 ## ✨ Tính năng chính
 
 ### 1. Đăng nhập & phân quyền
-- Login email/password với mock auth (mật khẩu demo: `123456`)
+- Login email/password với mock auth (mật khẩu demo: `smartcafe2026`, chỉ có trong bản debug)
 - 5 role: **Admin / Cashier / Barista / Waiter / Customer**
 - Auth guard tự động redirect theo route được phép
 - **Phân quyền theo role ở tầng router** (`RouteGuard`): user nhập thẳng URL màn không đúng quyền sẽ bị đẩy về màn hình của role
@@ -199,7 +199,7 @@ flutter build web --release           # Web
 
 ## 🔐 Tài khoản demo
 
-Mật khẩu chung: **`123456`**
+Mật khẩu chung: **`smartcafe2026`** (từ migration 0002; bản cũ là `123456`)
 
 | Vai trò | Email | Tính năng được dùng |
 |---------|-------|---------------------|

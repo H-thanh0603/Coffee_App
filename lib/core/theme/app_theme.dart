@@ -4,15 +4,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 class AppTheme {
-  static ThemeData get light {
-    AppColors.dark = false;
-    return _build(Brightness.light);
-  }
+  // Pure getters: không đụng AppColors.dark ở đây (side-effect trong getter
+  // làm light mode cũng đọc palette dark). AppColors.dark do SmartCafeApp
+  // set duy nhất một lần mỗi frame trước khi dựng MaterialApp.
+  static ThemeData get light => _build(Brightness.light);
 
-  static ThemeData get dark {
-    AppColors.dark = true;
-    return _build(Brightness.dark);
-  }
+  static ThemeData get dark => _build(Brightness.dark);
 
   static ThemeData _build(Brightness brightness) {
     final base = brightness == Brightness.dark

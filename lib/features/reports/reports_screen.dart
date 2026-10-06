@@ -127,6 +127,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
         const SizedBox(height: 8),
         RevenueChart(data: chartData, labelEvery: days >= 30 ? 5 : 1),
         const SizedBox(height: 16),
+        const Text('Giờ cao điểm (7 ngày)',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+        const SizedBox(height: 8),
+        _peakHourCard(context, store),
+        const SizedBox(height: 16),
         _section(
             'Top món bán chạy',
             top
@@ -197,6 +202,74 @@ class _ReportsScreenState extends State<ReportsScreen> {
         labelStyle: TextStyle(
             color: _range == code ? Colors.white : AppColors.textPrimary),
       );
+
+  /// Biểu đồ cột đơn theo giờ + gợi ý xếp ca từ dữ liệu đơn thật.
+  Widget _peakHourCard(BuildContext context, DataStore store) {
+    final counts = store.ordersByHour(days: 7);
+    final max = counts.fold<int>(1, (m, e) => e > m ? e : m);
+    final peaks = store.peakHours(days: 7);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: 110,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    for (var h = 6; h <= 22; h++)
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.bottomCenter,
+                                  child: Container(
+                                    width: double.infinity,
+                                    height:
+                                        70 * (counts[h] / max) + (counts[h] > 0 ? 3 : 0),
+                                    decoration: BoxDecoration(
+                                      color: peaks.any((e) => e.key == h)
+                                          ? AppColors.accent
+                                          : AppColors.primary
+                                              .withOpacity(0.45),
+                                      borderRadius: const BorderRadius.vertical(
+                                          top: Radius.circular(3)),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(h.toString(),
+                                  style: TextStyle(
+                                      fontSize: 9,
+                                      color: AppColors.textSecondary)),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(children: [
+                const Icon(Icons.schedule,
+                    size: 16, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                    child: Text(store.shiftSuggestion(days: 7),
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600))),
+              ]),
+            ]),
+      ),
+    );
+  }
 
   Widget _section(String title, List<Widget> children) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
